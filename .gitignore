@@ -1,0 +1,76 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ========================
+# Virtual Environments
+# ========================
+.venv/
+venv/
+ENV/
+env/
+
+# ========================
+# IDEs / Editors
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ========================
+# OS files (Windows / Mac)
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Logs / Outputs
+# ========================
+logs/
+*.log
+outputs/
+checkpoints/
+runs/
+results/
+
+# ========================
+# ML / Deep Learning
+# ========================
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pkl
+
+# Dataset (VERY IMPORTANT - don't upload huge data)
+dataset/
+videos/
+frames/
+optical_flow/
+
+# ========================
+# Jupyter Notebooks checkpoints
+# ========================
+.ipynb_checkpoints/
+
+# ========================
+# PyTorch / Torch cache
+# ========================
+torch_extensions/
+.cache/
+
+# ========================
+# Misc
+# ========================
+*.tmp
+*.bak

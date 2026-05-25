@@ -1,0 +1,41 @@
+"""Project-level configuration for SceneMotion-LLM."""
+
+from scene_motion_llm.utils.config import *
+
+__all__ = [
+    'DATASET_PATH',
+    'LABELS_PATH',
+    'VIDEO_PATH',
+    'FRAMES_PATH',
+    'OPTICAL_FLOW_PATH',
+    'CHECKPOINT_PATH',
+    'OUTPUT_PATH',
+    'FRAME_SIZE',
+    'FPS',
+    'MAX_FRAMES',
+    'MIN_FRAMES',
+    'SPATIAL_FEATURE_DIM',
+    'TEMPORAL_HIDDEN_DIM',
+    'ATTENTION_DIM',
+    'FUSION_DIM',
+    'NUM_CLASSES',
+    'BATCH_SIZE',
+    'NUM_EPOCHS',
+    'LEARNING_RATE',
+    'WEIGHT_DECAY',
+    'PATIENCE',
+    'GRADIENT_CLIP',
+    'DEVICE',
+    'TRAIN_SPLIT',
+    'VAL_SPLIT',
+    'TEST_SPLIT',
+    'SENTIMENT_CLASSES',
+    'REVERSE_SENTIMENT_CLASSES',
+    'OPTICAL_FLOW_THRESHOLD',
+    'MOTION_MAGNITUDE_THRESHOLD',
+    'VISUALIZE_OPTICAL_FLOW',
+    'SAVE_ATTENTION_MAPS',
+    'USE_LOCAL_LLM',
+    'LLM_MODEL_NAME',
+    'LLM_MAX_LENGTH'
+]
