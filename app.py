@@ -963,6 +963,7 @@ import tempfile
 import os
 import json
 from datetime import datetime
+from pathlib import Path
 
 from scene_motion_llm.models.sentiment_classifier import SceneMotionLLMModel
 from scene_motion_llm.inference import SceneMotionInferencer
@@ -973,7 +974,8 @@ from scene_motion_llm.inference import SceneMotionInferencer
 st.set_page_config(
     page_title="SceneMotion AI",
     page_icon="🎬",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 # =========================================================
@@ -982,45 +984,24 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-html, body {
-    font-family: 'Segoe UI', sans-serif;
-    background: #0b1220;
-    color: #ffffff;
-}
-
-.main {
-    background: transparent;
-}
+.stApp { background: #f7f8fc; }
+.block-container { max-width: 1080px; padding-top: 3rem; padding-bottom: 3rem; }
 
 /* Glass card */
-.glass {
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 4px 30px rgba(0,0,0,0.3);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.1);
-}
+.glass { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 1.4rem; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06); }
 
 /* Title */
-.title {
-    font-size: 34px;
-    font-weight: 700;
-    text-align: center;
-    color: #ffffff;
-}
+.title { font-size: 2.5rem; font-weight: 700; color: #172554; }
 
 /* Subtitle */
-.subtitle {
-    text-align: center;
-    color: #a5b4fc;
-    margin-bottom: 20px;
-}
+.subtitle { color: #64748b; margin-bottom: 1.5rem; }
 
 /* Sentiment styles */
-.pos { color: #22c55e; font-size: 26px; font-weight: bold; }
-.neu { color: #facc15; font-size: 26px; font-weight: bold; }
-.neg { color: #ef4444; font-size: 26px; font-weight: bold; }
+.pos { color: #15803d; font-size: 1.75rem; font-weight: 700; }
+.neu { color: #a16207; font-size: 1.75rem; font-weight: 700; }
+.neg { color: #b91c1c; font-size: 1.75rem; font-weight: 700; }
+div.stButton > button { background: #1d4ed8; color: white; border: 0; border-radius: 9px; font-weight: 600; }
+div.stButton > button:hover { background: #1e40af; color: white; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -1029,7 +1010,7 @@ html, body {
 # HEADER
 # =========================================================
 st.markdown('<div class="title">🎬 SceneMotion AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">AI Video Sentiment Analysis (Deep Learning)</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Upload a video and get a concise scene-motion sentiment prediction.</div>', unsafe_allow_html=True)
 
 # =========================================================
 # SESSION STATE
@@ -1062,9 +1043,9 @@ def load_model():
                 dropout=0.3
             )
 
-            checkpoint_path = "./checkpoints/best_model.pt"
+            checkpoint_path = Path(__file__).resolve().parent / "checkpoints" / "best_model.pt"
 
-            if os.path.exists(checkpoint_path):
+            if checkpoint_path.exists():
                 checkpoint = torch.load(checkpoint_path, map_location=st.session_state.device)
                 model.load_state_dict(checkpoint["model_state_dict"])
                 st.success("✅ Model Loaded")
@@ -1078,7 +1059,7 @@ def load_model():
 
             st.session_state.inferencer = SceneMotionInferencer(
                 model=model,
-                checkpoint_path=checkpoint_path if os.path.exists(checkpoint_path) else None,
+                checkpoint_path=str(checkpoint_path) if checkpoint_path.exists() else None,
                 device=st.session_state.device,
                 max_frames=30
             )
@@ -1185,20 +1166,30 @@ def analyze_video(video_file):
 # =========================================================
 # UI SECTION
 # =========================================================
-with st.container():
+left, right = st.columns([1.4, 1], gap="large")
+
+with left:
     st.markdown('<div class="glass">', unsafe_allow_html=True)
-
-    st.subheader("📤 Upload Video")
-
-    file = st.file_uploader("Choose video", type=["mp4", "avi", "mov", "mkv"])
+    st.subheader("Upload a video")
+    file = st.file_uploader("Supported: MP4, AVI, MOV, MKV", type=["mp4", "avi", "mov", "mkv"])
 
     if file:
+        st.caption(f"Ready to analyze: {file.name} · {file.size / 1024 / 1024:.1f} MB")
         st.video(file)
-
-        if st.button("🚀 Analyze Video"):
+        if st.button("Analyze video", type="primary", use_container_width=True):
             analyze_video(file)
-
     else:
-        st.info("Upload a video to start analysis")
+        st.info("Choose a video to begin.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
+with right:
+    st.markdown('<div class="glass">', unsafe_allow_html=True)
+    st.subheader("How it works")
+    st.markdown("""
+    1. Upload a short video.
+    2. SceneMotion samples frames and motion.
+    3. Review the predicted sentiment and confidence.
+    """)
+    st.divider()
+    st.caption(f"Running on {st.session_state.device.upper()} · Results stay on this device")
     st.markdown("</div>", unsafe_allow_html=True)
