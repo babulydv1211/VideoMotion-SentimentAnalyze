@@ -1,200 +1,83 @@
-# 🎬 SceneMotion-LLM: Sentiment Analysis from Scene Motion
+# SceneMotion-LLM
 
-A complete end-to-end multimodal video sentiment analysis system built with PyTorch, OpenCV, and optional Transformers support.
+Video sentiment classification from visual appearance and motion. The active
+training path uses LIRIS-ACCEDE labels and produces positive, neutral, or
+negative predictions.
 
-## 🚀 What This Project Does
-
-SceneMotion-LLM analyzes videos to predict one of three sentiment classes:
-- **Positive**
-- **Neutral**
-- **Negative**
-
-It combines:
-- video frame extraction
-- optical flow motion analysis
-- a ResNet-based spatial feature extractor
-- temporal sequence modeling with LSTM
-- attention mechanisms
-- feature fusion
-- sentiment classification
-
-## 📁 Repository Structure
+## Project layout
 
 ```
 scene_motion_llm/
-├── api/                       # FastAPI backend module
-├── dataset/                   # Local datasets for CMU-MOSEI, UCF101, UCF-Crime, Kinetics400
-├── inference/                 # Inference engine implementation
-├── models/                    # Model architecture components
-├── scripts/                   # Helper scripts
-├── training/                  # Multi-stage training orchestration
-├── ui/                        # UI launcher wrappers
-├── utils/                     # Config, data loading, frame extraction, optical flow
-├── videos/                    # Sample or uploaded videos
-├── frames/                    # Extracted video frames
-├── optical_flow/              # Optical flow visualizations
-├── checkpoints/               # Saved model checkpoints
-├── outputs/                   # Analysis outputs
-├── app.py                     # Streamlit application
-├── main_train.py              # Training entrypoint
-├── main_inference.py          # CLI inference entrypoint
-├── train.py                   # Training pipeline class
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+├── models/       # Spatial, temporal, attention, and classifier modules
+├── inference/    # Video inference implementation
+├── training/     # Feature-model training utilities
+├── utils/        # Configuration, data loading, frames, and optical flow
+├── api/          # Optional FastAPI application
+├── ui/           # Streamlit launcher
+├── train_pipeline.py
+├── main_inference.py
+├── requirements.txt
+└── requirements-dev.txt
 ```
 
-## ✅ Setup
+Local datasets, checkpoints, extracted frames, optical flow, outputs, and
+virtual environments are intentionally ignored by Git.
 
-### 1. Create and activate a virtual environment
+## Setup
 
-```bash
-cd scene_motion_llm
-python -m venv venv
-# Windows
-env\Scripts\activate
-# macOS / Linux
-source venv/bin/activate
+Run commands from the parent directory of this repository so Python can import
+the `scene_motion_llm` package.
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r scene_motion_llm\requirements.txt
 ```
 
-### 2. Install dependencies
+For tests and code-quality tools:
 
-```bash
-pip install -r requirements.txt
+```powershell
+pip install -r scene_motion_llm\requirements-dev.txt
 ```
 
-### 3. Prepare datasets
+## Train on LIRIS-ACCEDE
 
-Place dataset files in the local dataset folder structure:
-- `scene_motion_llm/dataset/CMU_MOSEI/`
-- `scene_motion_llm/dataset/UCF101/`
-- `scene_motion_llm/dataset/UCF-CRIME/`
-- `scene_motion_llm/dataset/Kinetics/`
-
-If you only use CMU-MOSEI, only the `dataset/CMU_MOSEI/` folder is required.
-
-For UCF101, use `--dataset-type ucf101` or `--dataset-type ucf` and point `--dataset-path` at your UCF101 root folder.
-
-## ▶️ Running the Project
-
-### Training
-
-```bash
-python main_train.py
-```
-
-For a quick validation run with synthetic data:
-
-```bash
-python main_train.py --use-dummy-data
-```
-
-### Inference
-
-Analyze a single video:
-
-```bash
-python main_inference.py path/to/video.mp4 --checkpoint checkpoints/best_model.pt --output-dir outputs/inference
-```
-
-Batch inference on a directory:
-
-```bash
-python main_inference.py scene_motion_llm/videos --batch --pattern "*.mp4"
-```
-
-### Streamlit UI
-
-```bash
-streamlit run app.py
-```
-
-Then open `http://localhost:8501`.
-
-### FastAPI Backend
-
-```bash
-uvicorn api.fastapi_app:app --reload --host 0.0.0.0 --port 8000
-```
-
-## 🔧 Configuration
-
-Edit `scene_motion_llm/utils/config.py` to customize behavior.
-
-Important variables:
-
-```python
-FRAME_SIZE = (112, 112)
-FPS = 10
-MAX_FRAMES = 8
-BATCH_SIZE = 1
-NUM_EPOCHS = 100
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-5
-PATIENCE = 5
-DEVICE = 'cuda'
-```
-
-> If CUDA is unavailable, change `DEVICE` to `cpu` or allow the code to fall back automatically.
-
-## 🧠 Model Overview
-
-### Key components
-- `models/spatial_extractor.py`: ResNet-based spatial feature extraction
-- `models/temporal_motion.py`: LSTM temporal motion modeling
-- `models/attention.py`: Attention mechanisms
-- `models/sentiment_classifier.py`: Fusion and classification head
-
-### Utility modules
-- `utils/frame_extractor.py`: Frame sampling and extraction
-- `utils/optical_flow.py`: Optical flow computation
-- `utils/dataset.py`: Multi-dataset PyTorch loader
-- `inference/video_inference.py`: Video analysis engine
-
-## 📚 Typical Workflow
-
-1. Place raw videos or dataset files in the dataset folder.
-2. Train the model using `python main_train.py`.
-3. Run inference with `python main_inference.py`.
-
-## LIRIS-ACCEDE-only training
-
-This project trains only on LIRIS-ACCEDE. Put the official annotation file
-`ACCEDEaffect.txt` (preferred) or `ACCEDEranking.txt` in
-`scene_motion_llm/dataset/annotations/`; video filenames must match the clips.
-When annotations are absent, the loader uses LIRIS's documented clip order
-(lowest-to-highest valence) to make deterministic negative/neutral/positive
-labels. Official annotations remain preferable for the most accurate model.
+Place the video clips in `scene_motion_llm/dataset/Liris_Accede/` and the
+official `ACCEDEaffect.txt` annotation file in
+`scene_motion_llm/dataset/annotations/`.
 
 ```powershell
 python -m scene_motion_llm.train_pipeline --epochs 100 --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt
-python -m scene_motion_llm.main_inference .\my_video.mp4 --checkpoint .\checkpoints\stage2_accede\best_model.pt
 ```
 
-LIRIS training does not use early stopping: it always completes the requested
-number of epochs (100 by default). Inference reports probabilities and the
-measured motion, visual-change, and brightness statistics behind its concise
-explanation; these statistics describe the video and are not claims about a
-person's internal emotional state.
-4. Optionally use `streamlit run app.py` for interactive video analysis.
+If annotations are unavailable, the data loader can use the documented LIRIS
+clip ordering to produce deterministic labels, but official annotations are
+recommended.
 
-## 📄 Useful Scripts
+## Run inference
 
-- `main_train.py` — training entrypoint
-- `main_inference.py` — inference entrypoint
-- `app.py` — Streamlit application
-- `api/fastapi_app.py` — REST API backend
-- `training/stage_training.py` — multi-stage dataset training orchestration
+```powershell
+python -m scene_motion_llm.main_inference .\my_video.mp4 --checkpoint .\scene_motion_llm\checkpoints\stage2_accede\best_model.pt
+```
 
-## 📌 Notes
+The checkpoint is auto-detected when `--checkpoint` is omitted. Results are
+written under `outputs/` unless another output directory is provided.
 
-- `train.py` contains the training loop, metrics, checkpoint saving, and plotting.
-- `main_train.py` and `main_inference.py` are the recommended CLI entrypoints.
-- The project is designed for real video input and optical flow motion analysis.
+## Optional interfaces
 
-## 🛠️ Troubleshooting
+```powershell
+# Streamlit
+streamlit run scene_motion_llm\app.py
 
-- Install missing libraries with `pip install -r requirements.txt`.
-- Ensure paths in `scene_motion_llm/utils/config.py` point to existing directories.
-- If `fastapi` is not installed, add it with `pip install fastapi uvicorn`.
+# FastAPI
+uvicorn scene_motion_llm.api.fastapi_app:app --reload
+```
 
-Enjoy using SceneMotion-LLM for video sentiment analysis! 🎬
+## Verify
+
+```powershell
+python -m pytest tests -q
+```
+
+The tests cover the LIRIS training entry point, trainer metrics, and checkpoint
+path resolution.
