@@ -1050,24 +1050,19 @@ def load_model():
                 / "best_model.pt"
             )
 
-            if checkpoint_path.exists():
-                checkpoint = torch.load(checkpoint_path, map_location=st.session_state.device)
-                model.load_state_dict(checkpoint["model_state_dict"])
-                st.success("✅ Model Loaded")
-            else:
-                st.warning("⚠ No checkpoint found (using random weights)")
+            if not checkpoint_path.exists():
+                st.error("Compatible LIRIS sentiment checkpoint was not found.")
+                st.stop()
 
-            model.to(st.session_state.device)
-            model.eval()
-
-            st.session_state.model = model
-
-            st.session_state.inferencer = SceneMotionInferencer(
+            inferencer = SceneMotionInferencer(
                 model=model,
-                checkpoint_path=str(checkpoint_path) if checkpoint_path.exists() else None,
+                checkpoint_path=str(checkpoint_path),
                 device=st.session_state.device,
                 max_frames=30
             )
+            st.session_state.model = inferencer.model
+            st.session_state.inferencer = inferencer
+            st.success("✅ LIRIS sentiment model loaded")
 
 # =========================================================
 # SAFE RESULT HANDLER
