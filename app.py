@@ -964,8 +964,8 @@ import os
 import json
 from datetime import datetime
 
-from models.sentiment_classifier import SceneMotionLLMModel
-from inference import SceneMotionInferencer
+from scene_motion_llm.models.sentiment_classifier import SceneMotionLLMModel
+from scene_motion_llm.inference import SceneMotionInferencer
 
 # =========================================================
 # PAGE CONFIG
