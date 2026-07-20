@@ -167,6 +167,8 @@ This video is predicted as {sentiment.lower()} because its combined appearance a
             frames_tensor = torch.cat([frames_tensor, pad], dim=0)
 
         frames_tensor = frames_tensor.unsqueeze(0).to(self.device)
+        valid_mask = torch.zeros((1, self.max_frames), dtype=torch.bool, device=self.device)
+        valid_mask[:, :len(frames)] = True
 
         # -------------------------
         # OPTICAL FLOW
@@ -189,14 +191,34 @@ This video is predicted as {sentiment.lower()} because its combined appearance a
         # INFERENCE
         # -------------------------
         with torch.no_grad():
-            outputs = self.model(frames_tensor, optical_flow_tensor)
+            outputs = self.model(frames_tensor, optical_flow_tensor, mask=valid_mask)
 
         probs = outputs["probabilities"].cpu().numpy()[0]
         pred = outputs["predicted_class"].cpu().numpy()[0]
+        logits = outputs["logits"].cpu().numpy()[0]
+        attention = outputs["attention_weights"].cpu().numpy()[0][:len(frames)]
 
         sentiment = self.sentiment_labels[pred]
         confidence = float(probs[pred])
         evidence = self._visual_evidence(frames, flow[:len(frames)])
+        frame_motion = np.linalg.norm(flow[:len(frames)], axis=-1).mean(axis=(1, 2))
+        ranked_frames = np.argsort(attention)[::-1][:min(3, len(frames))]
+        attention_evidence = [
+            {
+                "sampled_frame": int(frame_index + 1),
+                "attention_weight": float(attention[frame_index]),
+                "mean_flow_magnitude": float(frame_motion[frame_index]),
+            }
+            for frame_index in ranked_frames
+        ]
+        ranked_classes = np.argsort(probs)[::-1]
+        runner_up = int(ranked_classes[1])
+        model_evidence = {
+            "logits": [float(value) for value in logits],
+            "probability_margin": float(probs[pred] - probs[runner_up]),
+            "runner_up": self.sentiment_labels[runner_up],
+            "top_attended_frames": attention_evidence,
+        }
 
         logger.info(f"Prediction: {sentiment} ({confidence:.2%})")
 
@@ -217,6 +239,7 @@ This video is predicted as {sentiment.lower()} because its combined appearance a
             "probabilities": probs,
             "num_frames": len(frames),
             "evidence": evidence,
+            "model_evidence": model_evidence,
             "report": report
         }
 

@@ -1043,7 +1043,12 @@ def load_model():
                 dropout=0.3
             )
 
-            checkpoint_path = Path(__file__).resolve().parent / "checkpoints" / "best_model.pt"
+            checkpoint_path = (
+                Path(__file__).resolve().parent
+                / "checkpoints"
+                / "stage2_accede"
+                / "best_model.pt"
+            )
 
             if checkpoint_path.exists():
                 checkpoint = torch.load(checkpoint_path, map_location=st.session_state.device)
@@ -1094,13 +1099,32 @@ def show_result(result):
     col1.metric("Confidence", f"{confidence:.2%}")
     col2.metric("Device", st.session_state.device.upper())
 
-    st.subheader("📊 Probability")
+    st.subheader("Class probabilities")
     labels = ["Positive", "Neutral", "Negative"]
 
     for i in range(3):
         st.write(f"{labels[i]}")
         st.progress(float(probs[i]))
         st.write(f"{probs[i]:.2%}")
+
+    model_evidence = result.get("model_evidence", {})
+    evidence = result.get("evidence", {})
+    if model_evidence or evidence:
+        st.divider()
+        st.subheader("Research evidence")
+        evidence_columns = st.columns(4)
+        evidence_columns[0].metric("Frames analyzed", result.get("num_frames", 0))
+        evidence_columns[1].metric("Probability margin", f"{model_evidence.get('probability_margin', 0.0):.2%}")
+        evidence_columns[2].metric("Mean motion", f"{evidence.get('mean_motion', 0.0):.3f}")
+        evidence_columns[3].metric("Frame change", f"{evidence.get('frame_change', 0.0):.3f}")
+
+        st.caption(
+            "Top-attended frames are the sampled frames given the most temporal attention by the model. "
+            "They are inspection evidence, not a causal explanation."
+        )
+        top_frames = model_evidence.get("top_attended_frames", [])
+        if top_frames:
+            st.dataframe(top_frames, hide_index=True, use_container_width=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1128,27 +1152,16 @@ def analyze_video(video_file):
         # SAFE OPTIONAL SECTIONS
         # =========================
 
-        st.markdown('<div class="glass">', unsafe_allow_html=True)
-        st.subheader("🧠 AI Summary")
-
-        # NO CRASH SAFE OUTPUT
-        if "motion_analysis" in result:
-            st.write(result["motion_analysis"])
-        else:
-            st.info("Motion analysis not available in current model output.")
-
-        if "report" in result:
-            st.text(result["report"])
-        else:
-            st.info("Detailed report not generated.")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.expander("Technical report", expanded=False):
+            st.text(result.get("report", "No report generated."))
 
         # DOWNLOAD
         download_data = {
             "sentiment": result.get("sentiment"),
             "confidence": float(result.get("confidence", 0)),
             "probabilities": result.get("probabilities", []).tolist() if hasattr(result.get("probabilities"), "tolist") else result.get("probabilities"),
+            "visual_evidence": result.get("evidence", {}),
+            "model_evidence": result.get("model_evidence", {}),
             "timestamp": datetime.now().isoformat()
         }
 
