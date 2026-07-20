@@ -2,15 +2,15 @@
 # Install development tools separately with: pip install -r requirements-dev.txt
 
 # Model training and video processing
-torch==2.1.0
-torchvision==0.16.0
-numpy==1.24.3
-opencv-python==4.8.1.78
-scikit-learn==1.3.2
-h5py==3.9.0
-tqdm==4.66.1
+torch==2.5.1
+torchvision==0.20.1
+numpy==1.26.4
+opencv-python==4.10.0.84
+scikit-learn==1.5.2
+h5py==3.12.1
+tqdm==4.67.1
 
 # Optional, first-party interfaces included in this repository
-streamlit==1.28.1
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+streamlit==1.41.1
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
