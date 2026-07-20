@@ -19,6 +19,8 @@ __all__ = [
     'ATTENTION_DIM',
     'FUSION_DIM',
     'NUM_CLASSES',
+    'ACTION_NUM_CLASSES',
+    'KINETICS_NUM_CLASSES',
     'BATCH_SIZE',
     'NUM_EPOCHS',
     'LEARNING_RATE',

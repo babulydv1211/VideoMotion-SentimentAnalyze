@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.amp import autocast, GradScaler
+from torch.amp import autocast
+from torch.cuda.amp import GradScaler
 
 import numpy as np
 import logging
@@ -58,11 +59,10 @@ class SceneMotionTrainer:
         output_dir='./outputs'
     ):
 
-        self.device = (
-            'cuda'
-            if torch.cuda.is_available()
-            else 'cpu'
-        )
+        self.device = device
+        if self.device == 'cuda' and not torch.cuda.is_available():
+            logger.warning("CUDA requested but unavailable; using CPU")
+            self.device = 'cpu'
 
         self.model = model.to(self.device)
 
@@ -83,7 +83,7 @@ class SceneMotionTrainer:
             exist_ok=True
         )
 
-        self.best_val_accuracy = 0
+        self.best_val_accuracy = float('-inf')
         self.patience_counter = 0
 
         print(f"\nUsing Device: {self.device}")
@@ -112,20 +112,26 @@ class SceneMotionTrainer:
 
         self.criterion = nn.CrossEntropyLoss()
 
-        self.optimizer = optim.Adam(
-            self.model.parameters(),
-            lr=learning_rate,
-            weight_decay=weight_decay
-        )
+        trainable_params = list(self.model.parameters())
 
-        self.scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            mode='max',
-            factor=0.5,
-            patience=2
-        )
+        if trainable_params:
+            self.optimizer = optim.Adam(
+                trainable_params,
+                lr=learning_rate,
+                weight_decay=weight_decay
+            )
 
-        self.scaler = GradScaler('cuda')
+            self.scheduler = ReduceLROnPlateau(
+                self.optimizer,
+                mode='max',
+                factor=0.5,
+                patience=2
+            )
+        else:
+            self.optimizer = None
+            self.scheduler = None
+
+        self.scaler = GradScaler(enabled=(self.device == 'cuda'))
 
     # ============================================
     # TRAIN EPOCH
@@ -170,7 +176,8 @@ class SceneMotionTrainer:
                     )
                 )
 
-            self.optimizer.zero_grad()
+            if self.optimizer is not None:
+                self.optimizer.zero_grad()
 
             with autocast(
                 device_type='cuda',
@@ -182,7 +189,10 @@ class SceneMotionTrainer:
                     optical_flow
                 )
 
-                logits = outputs['logits']
+                logits = outputs['logits'].to(
+                    self.device,
+                    non_blocking=True
+                )
 
                 loss = self.criterion(
                     logits,
@@ -193,18 +203,19 @@ class SceneMotionTrainer:
             # BACKPROP
             # ============================================
 
-            self.scaler.scale(loss).backward()
+            if self.optimizer is not None and loss.requires_grad:
+                self.scaler.scale(loss).backward()
 
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                max_norm=1.0
-            )
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    max_norm=1.0
+                )
 
-            self.scaler.step(
-                self.optimizer
-            )
+                self.scaler.step(
+                    self.optimizer
+                )
 
-            self.scaler.update()
+                self.scaler.update()
 
             # ============================================
             # METRICS
@@ -238,8 +249,10 @@ class SceneMotionTrainer:
                 "loss":
                     f"{loss.item():.4f}",
 
-                "gpu_mem":
+                "gpu_mem": (
                     f"{torch.cuda.memory_allocated()/1024**3:.2f}GB"
+                    if self.device == 'cuda' else "n/a"
+                )
 
             })
 
@@ -309,7 +322,10 @@ class SceneMotionTrainer:
                     optical_flow
                 )
 
-                logits = outputs['logits']
+                logits = outputs['logits'].to(
+                    self.device,
+                    non_blocking=True
+                )
 
                 loss = self.criterion(
                     logits,
@@ -376,12 +392,15 @@ class SceneMotionTrainer:
     def train(
         self,
         num_epochs=NUM_EPOCHS,
-        patience=PATIENCE
+        patience=PATIENCE,
+        early_stopping=True
     ):
 
         print("\nTraining Started...\n")
 
         total_start = time.time()
+        history = []
+        best_epoch = 0
 
         for epoch in range(num_epochs):
 
@@ -426,15 +445,31 @@ class SceneMotionTrainer:
                 f"{epoch_time:.2f}s"
             )
 
-            self.scheduler.step(val_acc)
+            if self.scheduler is not None:
+                self.scheduler.step(val_acc)
 
             # ============================================
             # SAVE BEST MODEL
             # ============================================
 
+            epoch_metrics = {
+                'epoch': epoch + 1,
+                'train_loss': train_loss,
+                'train_accuracy': train_acc,
+                'val_loss': val_loss,
+                'val_accuracy': val_acc,
+                'precision': precision,
+                'recall': recall,
+                'f1': f1,
+                'patience_counter': self.patience_counter,
+                'best_val_accuracy': self.best_val_accuracy,
+            }
+            history.append(epoch_metrics)
+
             if val_acc > self.best_val_accuracy:
 
                 self.best_val_accuracy = val_acc
+                best_epoch = epoch + 1
 
                 self.save_checkpoint(
                     epoch,
@@ -462,6 +497,8 @@ class SceneMotionTrainer:
             # ============================================
 
             if (
+                early_stopping
+                and
                 self.patience_counter
                 >= patience
             ):
@@ -484,6 +521,17 @@ class SceneMotionTrainer:
             f"{total_time/60:.2f} minutes"
         )
 
+        return {
+            'history': history,
+            'best_epoch': best_epoch,
+            'best_val_accuracy': self.best_val_accuracy,
+            'val_accuracy': history[-1]['val_accuracy'] if history else None,
+            'train_accuracy': history[-1]['train_accuracy'] if history else None,
+            'final_train_accuracy': history[-1]['train_accuracy'] if history else None,
+            'final_val_accuracy': history[-1]['val_accuracy'] if history else None,
+            'final_f1': history[-1]['f1'] if history else None,
+        }
+
     # ============================================
     # SAVE CHECKPOINT
     # ============================================
@@ -502,7 +550,9 @@ class SceneMotionTrainer:
                 self.model.state_dict(),
 
             'optimizer_state_dict':
-                self.optimizer.state_dict()
+                self.optimizer.state_dict() if self.optimizer is not None else None,
+            'num_classes': 3,
+            'task': 'liris_accede_video_sentiment',
         }
 
         if is_best:
@@ -542,9 +592,10 @@ class SceneMotionTrainer:
             checkpoint['model_state_dict']
         )
 
-        self.optimizer.load_state_dict(
-            checkpoint['optimizer_state_dict']
-        )
+        if self.optimizer is not None and checkpoint.get('optimizer_state_dict') is not None:
+            self.optimizer.load_state_dict(
+                checkpoint['optimizer_state_dict']
+            )
 
         print(
             f"Checkpoint Loaded: "

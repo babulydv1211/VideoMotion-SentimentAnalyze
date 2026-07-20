@@ -155,6 +155,26 @@ DEVICE = 'cuda'
 1. Place raw videos or dataset files in the dataset folder.
 2. Train the model using `python main_train.py`.
 3. Run inference with `python main_inference.py`.
+
+## LIRIS-ACCEDE-only training
+
+This project trains only on LIRIS-ACCEDE. Put the official annotation file
+`ACCEDEaffect.txt` (preferred) or `ACCEDEranking.txt` in
+`scene_motion_llm/dataset/annotations/`; video filenames must match the clips.
+When annotations are absent, the loader uses LIRIS's documented clip order
+(lowest-to-highest valence) to make deterministic negative/neutral/positive
+labels. Official annotations remain preferable for the most accurate model.
+
+```powershell
+python -m scene_motion_llm.train_pipeline --epochs 100 --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt
+python -m scene_motion_llm.main_inference .\my_video.mp4 --checkpoint .\checkpoints\stage2_accede\best_model.pt
+```
+
+LIRIS training does not use early stopping: it always completes the requested
+number of epochs (100 by default). Inference reports probabilities and the
+measured motion, visual-change, and brightness statistics behind its concise
+explanation; these statistics describe the video and are not claims about a
+person's internal emotional state.
 4. Optionally use `streamlit run app.py` for interactive video analysis.
 
 ## 📄 Useful Scripts

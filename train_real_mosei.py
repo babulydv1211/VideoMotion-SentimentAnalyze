@@ -1,5 +1,4 @@
-cd C:\Users\student\Desktop\sentiment_Analysis
-.venv\Scripts\python.exe -m scene_motion_llm.main_train --dataset-type ucf101 --dataset-path scene_motion_llm/dataset/UCF101 --batch-size 4 --epochs 10import h5py
+import h5py
 import numpy as np
 import os
 from pathlib import Path

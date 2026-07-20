@@ -19,14 +19,64 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def resolve_checkpoint_path(project_root=None, requested_checkpoint=None):
+    """Resolve the best available checkpoint path for inference."""
+    candidates = []
+
+    if requested_checkpoint:
+        candidates.append(Path(requested_checkpoint))
+
+    roots = []
+    if project_root is not None:
+        roots.append(Path(project_root))
+
+    roots.extend([
+        Path.cwd(),
+        Path(__file__).resolve().parent,
+        Path(__file__).resolve().parents[1],
+    ])
+
+    for root in roots:
+        for relative_path in [
+            Path("checkpoints") / "stage2_accede" / "best_model.pt",
+            Path("checkpoints") / "best_model.pt",
+            Path("scene_motion_llm") / "checkpoints" / "stage2_accede" / "best_model.pt",
+            Path("scene_motion_llm") / "checkpoints" / "best_model.pt",
+            Path("scene_motion_llm") / "checkpoints" / "checkpoint_epoch_4.pt",
+            Path("scene_motion_llm") / "checkpoints" / "checkpoint_epoch_0.pt",
+        ]:
+            candidates.append(root / relative_path)
+
+    package_checkpoint_dir = Path(__file__).resolve().parent / "checkpoints"
+    if package_checkpoint_dir.exists():
+        for checkpoint in sorted(package_checkpoint_dir.glob("*.pt")):
+            candidates.append(checkpoint)
+
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        resolved = candidate.expanduser().resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.exists():
+            return str(resolved)
+
+    if requested_checkpoint:
+        return str(Path(requested_checkpoint).expanduser())
+
+    return None
+
+
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='Analyze video sentiment using SceneMotion-LLM')
     
     parser.add_argument('video', type=str,
                        help='Path to video file or directory for batch processing')
-    parser.add_argument('--checkpoint', type=str, default='./checkpoints/best_model.pt',
-                       help='Path to model checkpoint')
+    parser.add_argument('--checkpoint', type=str, default=None,
+                       help='Path to a LIRIS-ACCEDE video-model checkpoint (auto-detected when omitted)')
     parser.add_argument('--output-dir', type=str, default='./outputs/inference',
                        help='Output directory for results')
     parser.add_argument('--device', type=str, default='cuda',
@@ -47,7 +97,11 @@ def parse_args():
 def main():
     """Main inference function"""
     args = parse_args()
-    
+    checkpoint_path = resolve_checkpoint_path(
+        project_root=Path.cwd(),
+        requested_checkpoint=args.checkpoint
+    )
+
     # Validate device
     if args.device == 'cuda' and not torch.cuda.is_available():
         logger.warning("CUDA not available, falling back to CPU")
@@ -56,14 +110,19 @@ def main():
     logger.info(f"Using device: {args.device}")
     
     # Check checkpoint exists
-    if not os.path.exists(args.checkpoint):
-        logger.warning(f"Checkpoint not found: {args.checkpoint}")
-        logger.info("Using randomly initialized model")
+    if checkpoint_path is None or not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(
+            "No trained LIRIS-ACCEDE checkpoint was found. Train first, or pass "
+            "--checkpoint checkpoints/stage2_accede/best_model.pt."
+        )
+    else:
+        logger.info(f"Using checkpoint: {checkpoint_path}")
     
     # Create model
     logger.info("Creating model...")
     model = SceneMotionLLMModel(
-        spatial_feature_dim=2048,
+        spatial_feature_dim=512,
+        motion_feature_dim=2,
         temporal_hidden_dim=256,
         attention_dim=128,
         fusion_dim=512,
@@ -76,7 +135,7 @@ def main():
     logger.info("Initializing inferencer...")
     inferencer = SceneMotionInferencer(
         model=model,
-        checkpoint_path=args.checkpoint if os.path.exists(args.checkpoint) else None,
+        checkpoint_path=checkpoint_path,
         device=args.device,
         max_frames=args.max_frames,
         fps=args.fps
