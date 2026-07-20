@@ -81,3 +81,16 @@ python -m pytest tests -q
 
 The tests cover the LIRIS training entry point, trainer metrics, and checkpoint
 path resolution.
+
+## Research evaluation
+
+Use official LIRIS annotations to evaluate a checkpoint on a deterministic,
+stratified hold-out split. The command saves `evaluation.json` (accuracy,
+macro-F1, confusion matrix, and class report) and `predictions.csv`.
+
+```powershell
+python -m scene_motion_llm.evaluate_liris `
+  --dataset-path .\scene_motion_llm\dataset\Liris_Accede `
+  --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt `
+  --checkpoint .\scene_motion_llm\checkpoints\stage2_accede\best_model.pt
+```

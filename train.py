@@ -470,10 +470,12 @@ class SceneMotionTrainer:
 
                 self.best_val_accuracy = val_acc
                 best_epoch = epoch + 1
+                epoch_metrics['best_val_accuracy'] = self.best_val_accuracy
 
                 self.save_checkpoint(
                     epoch,
-                    is_best=True
+                    is_best=True,
+                    metrics=epoch_metrics,
                 )
 
                 print(
@@ -539,7 +541,8 @@ class SceneMotionTrainer:
     def save_checkpoint(
         self,
         epoch,
-        is_best=False
+        is_best=False,
+        metrics=None,
     ):
 
         checkpoint = {
@@ -553,6 +556,7 @@ class SceneMotionTrainer:
                 self.optimizer.state_dict() if self.optimizer is not None else None,
             'num_classes': 3,
             'task': 'liris_accede_video_sentiment',
+            'metrics': metrics or {},
         }
 
         if is_best:
