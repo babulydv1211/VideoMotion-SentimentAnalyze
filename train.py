@@ -89,58 +89,44 @@ class SceneMotionTrainer:
         print(f"\nUsing Device: {self.device}")
 
         if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA Version: {torch.version.cuda}")
 
-            print(
-                f"GPU: "
-                f"{torch.cuda.get_device_name(0)}"
-            )
-
-            print(
-                f"CUDA Version: "
-                f"{torch.version.cuda}"
-            )
-
-    # ============================================
-    # SETUP
-    # ============================================
-
-    def setup_training(
-        self,
-        learning_rate=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY
-    ):
-
-        self.criterion = nn.CrossEntropyLoss()
+    def setup_training(self, learning_rate=1e-4, weight_decay=1e-5):
+        try:
+            if hasattr(self.train_loader.dataset, 'indices'):
+                dataset = self.train_loader.dataset.dataset
+                indices = self.train_loader.dataset.indices
+                labels = [dataset.labels[i] for i in indices]
+            else:
+                labels = self.train_loader.dataset.labels
+            import numpy as np
+            import torch
+            class_counts = np.bincount(labels)
+            total_samples = len(labels)
+            class_counts[class_counts == 0] = 1 
+            weights = total_samples / (len(class_counts) * class_counts)
+            weight_tensor = torch.tensor(weights, dtype=torch.float32).to(self.device)
+            self.criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor)
+            import logging
+            logging.info(f"Applied Class Weights: {weights.tolist()}")
+        except Exception as e:
+            self.criterion = torch.nn.CrossEntropyLoss()
 
         trainable_params = list(self.model.parameters())
-
         if trainable_params:
-            self.optimizer = optim.Adam(
-                trainable_params,
-                lr=learning_rate,
-                weight_decay=weight_decay
-            )
-
-            self.scheduler = ReduceLROnPlateau(
-                self.optimizer,
-                mode='max',
-                factor=0.5,
-                patience=2
-            )
+            self.optimizer = torch.optim.Adam(trainable_params, lr=learning_rate, weight_decay=weight_decay)
+            from torch.optim.lr_scheduler import ReduceLROnPlateau
+            self.scheduler = ReduceLROnPlateau(self.optimizer, mode='max', factor=0.5, patience=2)
         else:
             self.optimizer = None
             self.scheduler = None
 
+        from torch.cuda.amp import GradScaler
         self.scaler = GradScaler(enabled=(self.device == 'cuda'))
 
-    # ============================================
-    # TRAIN EPOCH
-    # ============================================
-
     def train_epoch(self):
-
         self.model.train()
-
         total_loss = 0
 
         all_preds = []
@@ -184,9 +170,11 @@ class SceneMotionTrainer:
                 enabled=(self.device == 'cuda')
             ):
 
+                audio_features = batch.get('audio_features')
                 outputs = self.model(
                     frames,
-                    optical_flow
+                    optical_flow,
+                    audio_features=audio_features
                 )
 
                 logits = outputs['logits'].to(
@@ -317,9 +305,11 @@ class SceneMotionTrainer:
                 enabled=(self.device == 'cuda')
             ):
 
+                audio_features = batch.get('audio_features')
                 outputs = self.model(
                     frames,
-                    optical_flow
+                    optical_flow,
+                    audio_features=audio_features
                 )
 
                 logits = outputs['logits'].to(

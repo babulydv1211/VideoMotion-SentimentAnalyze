@@ -19,6 +19,7 @@ from scene_motion_llm.utils.frame_extractor import (
     normalize_frame
 )
 
+from scene_motion_llm.utils.audio_extractor import AudioExtractor
 from scene_motion_llm.utils.optical_flow import (
     OpticalFlowProcessor
 )
@@ -44,7 +45,7 @@ class SceneMotionInferencer:
         self.model.eval()
 
         if checkpoint_path and os.path.exists(checkpoint_path):
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
             checkpoint_task = checkpoint.get("task")
             if checkpoint_task == "cmu_mosei_feature_sentiment":
                 raise ValueError(
@@ -64,6 +65,7 @@ class SceneMotionInferencer:
         )
 
         self.optical_flow_processor = OpticalFlowProcessor()
+        self.audio_extractor = AudioExtractor()
 
         self.sentiment_labels = {
             0: "Positive",
@@ -74,7 +76,7 @@ class SceneMotionInferencer:
     # =====================================================
     # REPORT GENERATION
     # =====================================================
-    def _generate_report(self, sentiment, confidence, probabilities, evidence, frames_count):
+    def _generate_report(self, sentiment, confidence, probabilities, evidence, frames_count, has_audio=False):
         """Explain the model's output without claiming unmeasured emotions as facts."""
         alternatives = sorted(
             ((self.sentiment_labels[i], float(probability)) for i, probability in enumerate(probabilities)),
@@ -92,7 +94,7 @@ class SceneMotionInferencer:
 ================ VIDEO ANALYSIS REPORT ================
 
 Video Understanding:
-The LIRIS-ACCEDE-trained model analyzed {frames_count} sampled frames using visual appearance and optical-flow motion features.
+The LIRIS-ACCEDE-trained model analyzed {frames_count} sampled frames using visual appearance, optical-flow motion, and {"multimodal audio/text" if has_audio else "visual-only fallback"} features.
 
 Observed visual evidence:
 - Average optical-flow magnitude: {evidence['mean_motion']:.2f} ({motion_text}).
@@ -187,11 +189,23 @@ This video is predicted as {sentiment.lower()} because its combined appearance a
         optical_flow_tensor = optical_flow_tensor.permute(0, 3, 1, 2)
         optical_flow_tensor = optical_flow_tensor.unsqueeze(0).to(self.device)
 
+
+        # -------------------------
+        # AUDIO EXTRACTION
+        # -------------------------
+        raw_audio_features = self.audio_extractor.extract_audio_features(video_path)
+        if raw_audio_features is not None:
+            mfcc_tensor = torch.tensor(raw_audio_features['mfcc'], dtype=torch.float32).unsqueeze(0)
+            audio_features = {'mfcc': mfcc_tensor, 'text': [raw_audio_features['text']]}
+        else:
+            audio_features = None
+
         # -------------------------
         # INFERENCE
+
         # -------------------------
         with torch.no_grad():
-            outputs = self.model(frames_tensor, optical_flow_tensor, mask=valid_mask)
+            outputs = self.model(frames_tensor, optical_flow_tensor, audio_features=audio_features, mask=valid_mask)
 
         probs = outputs["probabilities"].cpu().numpy()[0]
         pred = outputs["predicted_class"].cpu().numpy()[0]

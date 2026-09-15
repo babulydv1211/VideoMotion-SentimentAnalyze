@@ -5,6 +5,7 @@ import torch.nn as nn
 from .spatial_extractor import SpatialFeatureExtractor
 from .temporal_motion import TemporalMotionLSTM
 from .attention import TemporalAttention, MultiHeadAttention
+from .audio_modules import AudioLSTM, TextRoBERTa
 
 
 # =========================================================
@@ -131,12 +132,25 @@ class SceneMotionLLMModel(nn.Module):
         )
 
         # =================================================
+        # AUDIO & TEXT FEATURES (Multimodal)
+        # =================================================
+        
+        self.audio_hidden_dim = 128
+        self.text_hidden_dim = 256
+        
+        self.audio_lstm = AudioLSTM(hidden_dim=self.audio_hidden_dim, dropout=dropout)
+        self.text_roberta = TextRoBERTa(hidden_dim=self.text_hidden_dim, dropout=dropout)
+
+
+        # =================================================
         # FEATURE FUSION
         # =================================================
 
         fusion_input_dim = (
             spatial_feature_dim +
-            (temporal_hidden_dim * 2)
+            (temporal_hidden_dim * 2) +
+            self.audio_hidden_dim +
+            self.text_hidden_dim
         )
 
         self.fusion_layer = nn.Sequential(
@@ -172,6 +186,7 @@ class SceneMotionLLMModel(nn.Module):
         self,
         frames,
         optical_flow=None,
+        audio_features=None,
         mask=None
     ):
 
@@ -292,13 +307,33 @@ class SceneMotionLLMModel(nn.Module):
             avg_spatial = spatial_attended.mean(dim=1)
 
         # =================================================
+        # AUDIO & TEXT PROCESSING
+        # =================================================
+        
+        if audio_features is not None and 'mfcc' in audio_features:
+            mfcc = audio_features['mfcc'].to(frames.device)
+            texts = audio_features.get('text', [])
+            
+            # Forward Audio
+            audio_feats = self.audio_lstm(mfcc)
+            
+            # Forward Text
+            text_feats = self.text_roberta(texts, frames.device)
+        else:
+            # Fallback for silent video / visual-only mode
+            audio_feats = torch.zeros((B, self.audio_hidden_dim), device=frames.device)
+            text_feats = torch.zeros((B, self.text_hidden_dim), device=frames.device)
+
+        # =================================================
         # FEATURE FUSION
         # =================================================
 
         fused_features = torch.cat(
             [
                 avg_spatial,
-                attended_motion
+                attended_motion,
+                audio_feats,
+                text_feats
             ],
             dim=1
         )
@@ -343,7 +378,9 @@ class SceneMotionLLMModel(nn.Module):
 
             "temporal_features": attended_motion,
 
-            "fused_features": fused_features
+            "fused_features": fused_features,
+            "audio_features": audio_feats,
+            "text_features": text_feats
         }
 
     # =====================================================

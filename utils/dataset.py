@@ -27,6 +27,7 @@ from .frame_extractor import (
 )
 
 from .optical_flow import OpticalFlowProcessor
+from .audio_extractor import AudioExtractor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,7 +46,8 @@ class VideoFrameDataset(Dataset):
         frame_size=FRAME_SIZE,
         fps=FPS,
         normalize=True,
-        compute_flow=True
+        compute_flow=True,
+        **kwargs
     ):
 
         self.dataset_type = dataset_type
@@ -66,6 +68,9 @@ class VideoFrameDataset(Dataset):
         )
 
         self.flow_processor = OpticalFlowProcessor()
+        
+        self.compute_audio = kwargs.get('compute_audio', True)
+        self.audio_extractor = AudioExtractor() if self.compute_audio else None
 
         (
             self.video_paths,
@@ -345,11 +350,18 @@ class VideoFrameDataset(Dataset):
                 optical_flow
             )
 
+        audio_features = None
+        if getattr(self, 'compute_audio', False) and self.audio_extractor:
+            # this returns {'mfcc': np.ndarray, 'text': str} or None
+            audio_features = self.audio_extractor.extract_audio_features(video_path)
+
         return {
 
             'frames': frames_tensor,
 
             'optical_flow': optical_flow_tensor,
+            
+            'audio_features': audio_features,
 
             'label': torch.tensor(
                 label,
@@ -445,62 +457,49 @@ class VideoFrameDataset(Dataset):
 # =============================================================
 
 def _collate_fn(batch):
-
-    frames = torch.stack(
-        [item['frames'] for item in batch]
-    )
-
-    labels = torch.stack(
-        [item['label'] for item in batch]
-    )
-
-    video_ids = [
-        item['video_id']
-        for item in batch
-    ]
-
-    num_frames = torch.tensor(
-        [item['num_frames'] for item in batch]
-    )
-
-    optical_flow_batch = [
-        item['optical_flow']
-        for item in batch
-    ]
-
+    frames = torch.stack([item['frames'] for item in batch])
+    labels = torch.stack([item['label'] for item in batch])
+    video_ids = [item['video_id'] for item in batch]
+    num_frames = torch.tensor([item['num_frames'] for item in batch])
+    
+    optical_flow_batch = [item['optical_flow'] for item in batch]
     if any(flow is not None for flow in optical_flow_batch):
-
         flows = [
-
             flow if flow is not None
-
-            else torch.zeros(
-                1,
-                MAX_FRAMES,
-                2,
-                FRAME_SIZE[0],
-                FRAME_SIZE[1]
-            )
-
+            else torch.zeros(1, MAX_FRAMES, 2, FRAME_SIZE[0], FRAME_SIZE[1])
             for flow in optical_flow_batch
         ]
-
         optical_flow = torch.cat(flows, dim=0)
-
     else:
-
         optical_flow = None
+        
+    audio_features_batch = [item.get('audio_features') for item in batch]
+    
+    if any(af is not None for af in audio_features_batch):
+        # We have at least one valid audio feature in this batch
+        mfccs = []
+        texts = []
+        
+        for af in audio_features_batch:
+            if af is not None:
+                mfccs.append(torch.tensor(af['mfcc'], dtype=torch.float32))
+                texts.append(af['text'])
+            else:
+                # Add zeros and empty text
+                mfccs.append(torch.zeros((13, 100), dtype=torch.float32)) # Default n_mfcc=13, max_frames=100
+                texts.append("")
+                
+        mfcc_tensor = torch.stack(mfccs)
+        audio_features = {'mfcc': mfcc_tensor, 'text': texts}
+    else:
+        audio_features = None
 
     return {
-
         'frames': frames,
-
         'optical_flow': optical_flow,
-
+        'audio_features': audio_features,
         'label': labels,
-
         'video_id': video_ids,
-
         'num_frames': num_frames
     }
 
