@@ -1,74 +1,111 @@
+"""Legacy audio feature extractor using librosa (MFCCs) and optionally Whisper.
+
+Whisper is fully optional — if it cannot be imported (e.g. blocked by a
+system Application Control policy or simply not installed), the extractor
+continues with MFCC features only and returns an empty transcript.
+"""
+
+import logging
 import os
-import torch
+
 import librosa
 import numpy as np
-import logging
-import whisper
+import torch
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional Whisper — imported once at module load, failures are remembered
+# ---------------------------------------------------------------------------
+_WHISPER_MODULE = None
+_WHISPER_CHECKED = False
+
+
+def _try_import_whisper():
+    """Return the whisper module or None if it cannot be loaded."""
+    global _WHISPER_MODULE, _WHISPER_CHECKED
+    if _WHISPER_CHECKED:
+        return _WHISPER_MODULE
+    _WHISPER_CHECKED = True
+    try:
+        import whisper  # noqa: PLC0415
+        _WHISPER_MODULE = whisper
+        logger.info("Whisper is available for transcript extraction.")
+    except Exception as exc:
+        logger.warning(
+            "Whisper could not be imported (%s). "
+            "Transcription will be skipped; MFCC features remain available.",
+            exc,
+        )
+        _WHISPER_MODULE = None
+    return _WHISPER_MODULE
+
+
 class AudioExtractor:
-    def __init__(self, sample_rate=16000, n_mfcc=13, max_audio_frames=100, device='cuda' if torch.cuda.is_available() else 'cpu'):
+    """Extract MFCCs and (optionally) a Whisper transcript from a video."""
+
+    def __init__(
+        self,
+        sample_rate: int = 16_000,
+        n_mfcc: int = 13,
+        max_audio_frames: int = 100,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    ):
         self.sample_rate = sample_rate
         self.n_mfcc = n_mfcc
         self.max_audio_frames = max_audio_frames
         self.device = device
-        
-        # Load whisper base model
-        try:
-            # We use 'base' to balance speed and accuracy
-            self.whisper_model = whisper.load_model('base', device=self.device)
-            logger.info("Loaded Whisper 'base' model for audio transcription.")
-        except Exception as e:
-            logger.warning(f"Could not load Whisper model: {e}")
-            self.whisper_model = None
+        self.whisper_model = None
 
-    def extract_audio_features(self, video_path):
-        """
-        Extracts MFCCs and Text Transcript from a video.
-        Returns:
-            dict: {
-                'mfcc': np.array of shape (n_mfcc, max_audio_frames),
-                'text': str (transcript)
-            }
-            or None if no audio track exists.
+        whisper = _try_import_whisper()
+        if whisper is not None:
+            try:
+                self.whisper_model = whisper.load_model("base", device=self.device)
+                logger.info("Loaded Whisper 'base' model for audio transcription.")
+            except Exception as exc:
+                logger.warning("Whisper model could not load (%s). Continuing without transcription.", exc)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def extract_audio_features(self, video_path: str):
+        """Extract MFCCs and optional transcript from a video file.
+
+        Returns a dict ``{'mfcc': np.ndarray, 'text': str}`` or ``None``
+        when the file has no decodable audio track.
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video not found: {video_path}")
-            
+
         try:
-            # Load audio using librosa directly from video file
             audio_array, _ = librosa.load(video_path, sr=self.sample_rate, mono=True)
-            
-            if audio_array is None or len(audio_array) == 0:
-                return None
-                
-            # Ensure float32 for librosa and whisper
-            audio_array = audio_array.astype(np.float32)
-            
-            # --- 1. Compute MFCCs ---
-            mfccs = librosa.feature.mfcc(y=audio_array, sr=self.sample_rate, n_mfcc=self.n_mfcc)
-            
-            # Pad or truncate MFCCs to fixed temporal size (max_audio_frames)
-            if mfccs.shape[1] < self.max_audio_frames:
-                pad_len = self.max_audio_frames - mfccs.shape[1]
-                mfccs = np.pad(mfccs, pad_width=((0, 0), (0, pad_len)), mode='constant')
-            else:
-                mfccs = mfccs[:, :self.max_audio_frames]
-            
-            # --- 2. Transcribe Text ---
-            text = ""
-            if self.whisper_model is not None:
-                audio_tensor = torch.from_numpy(audio_array).float()
-                result = self.whisper_model.transcribe(audio_tensor, fp16=(torch.cuda.is_available() and self.device != 'cpu'))
-                text = result.get('text', '').strip()
-                
-            return {
-                'mfcc': mfccs,
-                'text': text
-            }
-            
-        except Exception as e:
-            logger.debug(f"No audio track or audio extraction skipped for {video_path}: {e}")
+        except Exception as exc:
+            logger.debug("No audio track or decode failure for %s: %s", video_path, exc)
             return None
 
+        if audio_array is None or len(audio_array) == 0:
+            return None
+
+        audio_array = audio_array.astype(np.float32)
+
+        # --- MFCCs (always available) ---
+        mfccs = librosa.feature.mfcc(y=audio_array, sr=self.sample_rate, n_mfcc=self.n_mfcc)
+        if mfccs.shape[1] < self.max_audio_frames:
+            pad_len = self.max_audio_frames - mfccs.shape[1]
+            mfccs = np.pad(mfccs, pad_width=((0, 0), (0, pad_len)), mode="constant")
+        else:
+            mfccs = mfccs[:, : self.max_audio_frames]
+
+        # --- Transcript (optional — skipped gracefully if Whisper unavailable) ---
+        text = ""
+        if self.whisper_model is not None:
+            try:
+                audio_tensor = torch.from_numpy(audio_array).float()
+                fp16 = torch.cuda.is_available() and self.device != "cpu"
+                result = self.whisper_model.transcribe(audio_tensor, fp16=fp16)
+                text = result.get("text", "").strip()
+            except Exception as exc:
+                logger.debug("Whisper transcription skipped: %s", exc)
+
+        return {"mfcc": mfccs, "text": text}

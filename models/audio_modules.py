@@ -1,7 +1,10 @@
+import logging
+
 import torch
 import torch.nn as nn
-from transformers import RobertaModel, RobertaTokenizer
-import logging
+
+# transformers is optional — loaded lazily inside TextRoBERTa so that this
+# module can be imported even when the package is not installed.
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +39,15 @@ class TextRoBERTa(nn.Module):
     def __init__(self, model_name='roberta-base', hidden_dim=256, dropout=0.3, freeze=True):
         super().__init__()
         try:
+            from transformers import RobertaModel, RobertaTokenizer  # lazy — optional dep
             self.roberta = RobertaModel.from_pretrained(model_name)
             self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
             logger.info(f"Loaded {model_name} for text sentiment.")
-            
+
             if freeze:
                 for param in self.roberta.parameters():
                     param.requires_grad = False
-                    
+
             self.projection = nn.Sequential(
                 nn.Linear(self.roberta.config.hidden_size, hidden_dim),
                 nn.ReLU(),

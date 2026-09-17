@@ -1,4 +1,5 @@
 import torch
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
@@ -9,6 +10,7 @@ from torch.cuda.amp import GradScaler
 import numpy as np
 import logging
 import time
+import inspect
 
 from tqdm import tqdm
 
@@ -65,6 +67,11 @@ class SceneMotionTrainer:
             self.device = 'cpu'
 
         self.model = model.to(self.device)
+        forward_parameters = inspect.signature(self.model.forward).parameters.values()
+        self._model_accepts_audio_features = any(
+            parameter.name == "audio_features" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in forward_parameters
+        )
 
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -93,6 +100,14 @@ class SceneMotionTrainer:
             print(f"CUDA Version: {torch.version.cuda}")
 
     def setup_training(self, learning_rate=1e-4, weight_decay=1e-5):
+        """Configure the legacy trainer without making dataset labels mandatory.
+
+        Class-balanced loss is useful for the project's original datasets, but
+        utility datasets and smoke tests do not necessarily expose a ``labels``
+        attribute.  In that case a regular cross-entropy loss is the safe
+        fallback.  ``torch`` is imported at module level so the fallback never
+        masks the original error with an ``UnboundLocalError``.
+        """
         try:
             if hasattr(self.train_loader.dataset, 'indices'):
                 dataset = self.train_loader.dataset.dataset
@@ -100,8 +115,6 @@ class SceneMotionTrainer:
                 labels = [dataset.labels[i] for i in indices]
             else:
                 labels = self.train_loader.dataset.labels
-            import numpy as np
-            import torch
             class_counts = np.bincount(labels)
             total_samples = len(labels)
             class_counts[class_counts == 0] = 1 
@@ -110,7 +123,7 @@ class SceneMotionTrainer:
             self.criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor)
             import logging
             logging.info(f"Applied Class Weights: {weights.tolist()}")
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, IndexError):
             self.criterion = torch.nn.CrossEntropyLoss()
 
         trainable_params = list(self.model.parameters())
@@ -122,8 +135,15 @@ class SceneMotionTrainer:
             self.optimizer = None
             self.scheduler = None
 
-        from torch.cuda.amp import GradScaler
         self.scaler = GradScaler(enabled=(self.device == 'cuda'))
+
+    def _forward_model(self, frames, optical_flow, audio_features=None):
+        """Call both legacy visual models and audio-capable variants safely."""
+        if audio_features is not None:
+            audio_features = audio_features.to(self.device, non_blocking=True)
+        if self._model_accepts_audio_features:
+            return self.model(frames, optical_flow, audio_features=audio_features)
+        return self.model(frames, optical_flow)
 
     def train_epoch(self):
         self.model.train()
@@ -171,11 +191,7 @@ class SceneMotionTrainer:
             ):
 
                 audio_features = batch.get('audio_features')
-                outputs = self.model(
-                    frames,
-                    optical_flow,
-                    audio_features=audio_features
-                )
+                outputs = self._forward_model(frames, optical_flow, audio_features)
 
                 logits = outputs['logits'].to(
                     self.device,
@@ -306,11 +322,7 @@ class SceneMotionTrainer:
             ):
 
                 audio_features = batch.get('audio_features')
-                outputs = self.model(
-                    frames,
-                    optical_flow,
-                    audio_features=audio_features
-                )
+                outputs = self._forward_model(frames, optical_flow, audio_features)
 
                 logits = outputs['logits'].to(
                     self.device,
