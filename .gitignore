@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Virtual envs - don't commit these
+.venv/
+.venv311/
+.codex-venv/
+scene_motion_llm/.venv/
+
+
+# Cache directories - large binary data, don't commit
+scene_motion_llm/cache/
+
+# Checkpoints - large binary model files
+scene_motion_llm/checkpoints/
+
+# Dataset - raw video files
+scene_motion_llm/dataset/Liris_Accede/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

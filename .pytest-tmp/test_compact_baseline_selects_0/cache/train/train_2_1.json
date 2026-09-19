@@ -1,0 +1,33 @@
+{
+  "cache_signature": "604400c0c51ee7fc9357",
+  "cache_version": "resnet18-visual-cache-v1",
+  "embedding_dim": 512,
+  "feature_config": {
+    "cache_version": "resnet18-visual-cache-v1",
+    "config": {
+      "crop_size": 224,
+      "inference_batch_size": 16,
+      "max_duration_seconds": 15.0,
+      "resize_shorter_side": 256,
+      "sampled_frames": 16
+    },
+    "embedding_dim": 512,
+    "preprocessing": "resize_shorter_side_then_center_crop_then_imagenet_normalize",
+    "sampling": "uniform_frame_indices_within_first_max_duration_seconds",
+    "weights": "ResNet18_Weights.IMAGENET1K_V1"
+  },
+  "model": {
+    "weights": "test-local"
+  },
+  "sequence_length": 3,
+  "source_fingerprint": {
+    "mtime_ns": 1789641633264165800,
+    "path": "C:\\Users\\student\\Desktop\\sentiment_analysis\\.pytest-tmp\\test_compact_baseline_selects_0\\train_2_1.mp4",
+    "size_bytes": 16
+  },
+  "split": "train",
+  "video_id": "train_2_1",
+  "video_metadata": {
+    "fps": 24.0
+  }
+}

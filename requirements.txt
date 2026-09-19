@@ -1,0 +1,2 @@
+# Convenience entry point for installs from the workspace root.
+-r scene_motion_llm/requirements.txt
