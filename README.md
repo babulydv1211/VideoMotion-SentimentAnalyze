@@ -1,99 +1,174 @@
-# SceneMotion-LLM: Affective Video Classification
+# SceneMotion-LLM
 
-**SceneMotion-LLM** is a multimodal video affect (sentiment) classification system. It classifies short video clips into **Positive**, **Neutral**, or **Negative** sentiment by processing 5 synchronized pillars of information: audio, color/lighting, spatial context, motion, and temporal change.
+Reliability-aware short-video affect classification using five synchronized
+pillars: audio, color/lighting, spatial context, motion, and temporal change.
+The canonical model predicts **Positive**, **Neutral**, or **Negative** from
+LIRIS-ACCEDE valence ranks. The older visual/motion model remains only as a
+legacy baseline.
 
-## 📊 The Dataset: LIRIS-ACCEDE
+## Project layout
 
-We use the official **LIRIS-ACCEDE** dataset, consisting of 9,800 movie clips ranked by human emotional valence. 
-Labels are mapped from the official `valenceRank` into a fixed global thirds distribution:
+```
+scene_motion_llm/
+├── models/       # Legacy baseline and semantic five-pillar fusion model
+├── inference/    # Transparent upload inference
+├── training/     # Official-split LIRIS semantic training utilities
+├── utils/        # Five semantic feature extractors and video helpers
+├── api/          # Optional FastAPI application
+├── ui/           # Streamlit launcher
+├── train_pipeline.py
+├── main_inference.py
+├── requirements.txt
+└── requirements-dev.txt
+```
 
-| Class    | Rank range  |
-|----------|-------------|
-| Negative | 0 – 3265    |
-| Neutral  | 3266 – 6532 |
-| Positive | 6533 – 9799 |
+Local datasets, checkpoints, extracted frames, optical flow, outputs, and
+virtual environments are intentionally ignored by Git.
 
-## 🏆 State-of-the-Art (SOTA) & Benchmark Context
+## Setup
 
-When evaluating models on the LIRIS-ACCEDE dataset for 3-class discrete classification, it is important to understand the benchmark ceiling. State-of-the-art multimodal neural networks (combining Video Transformers, Audio, and Motion) typically achieve a maximum accuracy in the **60% to 65% range**.
+Run commands from the parent directory of this repository so Python can import
+the `scene_motion_llm` package.
 
-**Why is the maximum accuracy cap around 65%?**
-Human emotion is inherently subjective. The LIRIS-ACCEDE dataset was annotated via crowdsourcing, meaning the "ground truth" labels are averages of human opinions. Because there is heavy overlap between the "Neutral" class and the extreme classes, and because humans frequently disagree on the affective impact of a video, the data contains unavoidable noise. 
-
-If a machine learning model were to score significantly above 65%, it would imply the model is more consistent at predicting human emotion than humans are at agreeing with each other! Therefore, a 60-65% accuracy score represents a highly successful model that has reached the practical limits of agreement on this dataset.
-
-## 🧠 Architecture: Semantic Five-Pillar Fusion
-
-The canonical model accepts clips up to 15 seconds long. Every temporal window receives 5 feature sequences, which are then combined via a learned reliability gate. 
-
-1. **Audio**: MFCC / PANNs
-2. **Color/Lighting**: Global HSV stats
-3. **Spatial**: CLIP (ViT-B/32) Semantic Embeddings
-4. **Motion**: Dense Optical Flow
-5. **Temporal Change**: Scene cut frequency & transition dynamics
-
-A clip with no decodable sound has an exactly-zero audio fusion weight; a black or low-detail video keeps visual pillars available at low reliability. Neither case is hard-coded into a default sentiment label.
-
-## 🚀 Getting Started
-
-The core package and its specific README are located in the `scene_motion_llm/` directory. 
-
-To set up the environment:
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1
 pip install -r scene_motion_llm\requirements.txt
 ```
 
-To run the Streamlit UI:
-```powershell
-streamlit run scene_motion_llm\app.py
-```
-
-## 📁 Repository Structure
-
-```text
-sentiment_analysis/
-├── scene_motion_llm/           # Main package containing all source code
-│   ├── api/                    # FastAPI backend for remote inference
-│   ├── inference/              # Scripts for analyzing new videos
-│   ├── models/                 # PyTorch neural network architectures
-│   ├── training/               # Feature extraction and model training
-│   ├── ui/                     # Streamlit frontend application
-│   └── utils/                  # Helper functions for video/audio processing
-├── checkpoints/                # Saved weights for the best trained models
-├── outputs/                    # Exported predictions, evaluation metrics, and logs
-├── PROJECT_CONTEXT.md          # Internal development documentation
-└── README.md                   # This file
-```
-
-## 🎥 Running Inference on New Videos
-
-Once the model is trained, you can analyze the sentiment of any custom MP4 clip. The inference script automatically extracts all 5 pillars (Audio, CLIP Visuals, Motion, etc.) and routes them through the fusion network.
+For NVIDIA GPU training on Windows, install the matching CUDA build after the
+normal dependencies, then verify that PyTorch can see the GPU:
 
 ```powershell
-# Analyze a custom video
+pip install --upgrade --force-reinstall torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+For tests and code-quality tools:
+
+```powershell
+pip install -r scene_motion_llm\requirements-dev.txt
+```
+
+## Canonical five-pillar workflow
+
+The model accepts clips of up to 15 seconds. Every window gets five feature
+sequences, then a learned reliability gate combines them. A clip with no
+decodable sound has `audio = NIL` and an exactly-zero audio fusion weight; a
+black or low-detail video keeps visual pillars available at low reliability.
+Neither case is hard-coded as a sentiment label.
+
+The supervised target is LIRIS-ACCEDE only. Its `valenceRank` is divided over
+the complete 9,800-clip ranking range before any split is read:
+
+| Class | Rank range |
+|---|---:|
+| Negative | 0–3265 |
+| Neutral | 3266–6532 |
+| Positive | 6533–9799 |
+
+`ACCEDEsets.txt` supplies the official partitions (`1=train`,
+`2=validation`, `0=test`). This avoids the legacy model's random split and
+strong Neutral-class shortcut.
+
+First make a reproducible feature cache. The paths are explicit on purpose;
+do not copy a local Downloads path into code.
+
+```powershell
+$videoDir = ".\scene_motion_llm\dataset\Liris_Accede"
+$ranking = ".\scene_motion_llm\dataset\annotations\ACCEDEranking.txt"
+$sets = "C:\path\to\LIRIS-ACCEDE-annotations\annotations\ACCEDEsets.txt"
+$cache = ".\scene_motion_llm\cache\semantic_five_pillar_v2"
+
+# First check a few clips and their audio-status diagnostics.
+python -m scene_motion_llm.training.semantic_five_pillar_training `
+  --mode precompute --video-dir $videoDir --ranking-path $ranking `
+  --sets-path $sets --cache-dir $cache --limit-per-split 5 `
+  --use-pretrained-spatial --allow-model-download
+
+# Then create the complete versioned cache before the full experiment.
+python -m scene_motion_llm.training.semantic_five_pillar_training `
+  --mode precompute --video-dir $videoDir --ranking-path $ranking `
+  --sets-path $sets --cache-dir $cache --use-pretrained-spatial
+```
+
+Train after the cache finishes:
+
+```powershell
+python -m scene_motion_llm.training.semantic_five_pillar_training `
+  --mode train --video-dir $videoDir --ranking-path $ranking `
+  --sets-path $sets --cache-dir $cache `
+  --checkpoint-dir .\scene_motion_llm\checkpoints\semantic_five_pillar `
+  --epochs 25 --batch-size 16 --device cuda --use-pretrained-spatial
+```
+
+The checkpoint is selected by validation macro-F1, then the selected checkpoint
+is evaluated once on the official test set. It saves model/extractor settings,
+train-only normalizer statistics, label rule, split protocol, metrics, and the
+final test report together in `best_semantic_five_pillar.pt`.
+
+## Legacy baseline
+
+The old raw visual/motion route is retained for comparisons with previous
+experiments. It should not be used to claim the five-pillar model's result.
+
+```powershell
+python -m scene_motion_llm.train_pipeline --epochs 100 --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt
+```
+
+If annotations are unavailable, the data loader can use the documented LIRIS
+clip ordering to produce deterministic labels, but official annotations are
+recommended.
+
+## Run semantic inference
+
+```powershell
 python -m scene_motion_llm.scripts.analyze_semantic_video .\my_video.mp4 `
   --checkpoint .\scene_motion_llm\checkpoints\semantic_five_pillar\best_semantic_five_pillar.pt
 ```
 
-**What the output looks like:**
-The output report includes:
-- **Final Label**: Positive, Neutral, or Negative
-- **P/N/N class probabilities**
-- **Model Confidence score**
-- **Learned fusion weights** (which pillars the model relied on most for this specific video)
-- **Semantic cues** (e.g., lighting conditions, motion intensity)
+The report includes P/N/N probabilities, confidence, audio status, learned
+five-pillar weights, reliability, descriptive cues, and temporal windows the
+model attended to. Cues describe measurements—not emotion, violence, safety,
+or intent labels by themselves.
 
-## 🌐 Web Interface (UI)
-
-We provide a local Streamlit dashboard for easy, drag-and-drop video analysis.
+## Optional interfaces
 
 ```powershell
+# Streamlit
 streamlit run scene_motion_llm\app.py
+
+# FastAPI
+uvicorn scene_motion_llm.api.fastapi_app:app --reload
 ```
-This launches a web page where you can upload a video, click "Analyze", and view a breakdown of the 5 pillars alongside the final sentiment prediction.
 
-## 🤝 Contributing & License
+## Verify
 
-This project is open-source. For details on usage, please see the `LICENSE` file. When contributing, please ensure all new features are accompanied by appropriate unit tests.
+```powershell
+python -m pytest tests -q
+```
+
+The tests cover the LIRIS training entry point, trainer metrics, and checkpoint
+path resolution.
+
+## Research evaluation
+
+Use official LIRIS annotations to evaluate a checkpoint on a deterministic,
+stratified hold-out split. The command saves `evaluation.json` (accuracy,
+macro-F1, confusion matrix, and class report) and `predictions.csv`.
+
+```powershell
+python -m scene_motion_llm.evaluate_liris `
+  --dataset-path .\scene_motion_llm\dataset\Liris_Accede `
+  --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt `
+  --checkpoint .\scene_motion_llm\checkpoints\stage2_accede\best_model.pt
+```
+
+## State-of-the-Art (SOTA) & Benchmark Context
+
+When evaluating models on the LIRIS-ACCEDE dataset for 3-class discrete classification (Positive, Neutral, Negative), it is important to understand the benchmark ceiling. State-of-the-art multimodal neural networks (combining Video Transformers, Audio, and Motion) typically achieve a maximum accuracy in the **60% to 65% range**.
+
+**Why is the cap around 65%?**
+Human emotion is inherently subjective. The LIRIS-ACCEDE dataset was annotated via crowdsourcing, meaning the "ground truth" labels are averages of human opinions. Because there is heavy overlap between the "Neutral" class and the other classes, and because humans frequently disagree on the affective impact of a video, the data contains unavoidable noise. If a machine learning model were to score significantly above 65%, it would imply the model is more consistent at predicting human emotion than humans are at agreeing with each other. 
+
+Therefore, a 60-65% accuracy score represents a highly successful model that has reached the practical limits of agreement on this dataset.

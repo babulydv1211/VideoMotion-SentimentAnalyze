@@ -1,34 +1,81 @@
+# ========================
 # Python
+# ========================
 __pycache__/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
+*.so
 *.egg-info/
+dist/
+build/
+.eggs/
 
-# Virtual envs - don't commit these
+# ========================
+# Virtual Environments
+# ========================
 .venv/
-.venv311/
-.codex-venv/
-scene_motion_llm/.venv/
+venv/
+ENV/
+env/
 
-
-# Cache directories - large binary data, don't commit
-scene_motion_llm/cache/
-
-# Checkpoints - large binary model files
-scene_motion_llm/checkpoints/
-
-# Dataset - raw video files
-scene_motion_llm/dataset/Liris_Accede/
-
-# Logs
-*.log
-
-# IDE
+# ========================
+# IDEs / Editors
+# ========================
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS
+# ========================
+# OS files (Windows / Mac)
+# ========================
 .DS_Store
 Thumbs.db
+
+# ========================
+# Logs / Outputs
+# ========================
+logs/
+*.log
+outputs/
+checkpoints/
+runs/
+results/
+cache/
+
+# ========================
+# ML / Deep Learning
+# ========================
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pkl
+
+# Dataset (VERY IMPORTANT - don't upload huge data)
+dataset/
+videos/
+frames/
+optical_flow/
+
+# ========================
+# Jupyter Notebooks checkpoints
+# ========================
+.ipynb_checkpoints/
+
+# ========================
+# PyTorch / Torch cache
+# ========================
+torch_extensions/
+.cache/
+
+# ========================
+# Misc
+# ========================
+*.tmp
+*.bak

@@ -1,2 +1,24 @@
-# Convenience entry point for installs from the workspace root.
--r scene_motion_llm/requirements.txt
+# Runtime dependencies for SceneMotion-LLM.
+# Install development tools separately with: pip install -r requirements-dev.txt
+
+# Model training and video processing
+torch==2.5.1
+torchvision==0.20.1
+numpy==1.26.4
+opencv-python==4.10.0.84
+scikit-learn==1.5.2
+h5py==3.12.1
+tqdm==4.67.1
+
+# Optional, first-party interfaces included in this repository
+streamlit==1.41.1
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Multimodal Audio / Text dependencies
+librosa==0.10.2
+imageio-ffmpeg==0.5.1
+transformers==4.47.1
+moviepy==1.0.3
+openai-whisper==20240930
+open-clip-torch==2.31.0
