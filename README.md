@@ -163,3 +163,12 @@ python -m scene_motion_llm.evaluate_liris `
   --labels-path .\scene_motion_llm\dataset\annotations\ACCEDEaffect.txt `
   --checkpoint .\scene_motion_llm\checkpoints\stage2_accede\best_model.pt
 ```
+
+## State-of-the-Art (SOTA) & Benchmark Context
+
+When evaluating models on the LIRIS-ACCEDE dataset for 3-class discrete classification (Positive, Neutral, Negative), it is important to understand the benchmark ceiling. State-of-the-art multimodal neural networks (combining Video Transformers, Audio, and Motion) typically achieve a maximum accuracy in the **60% to 65% range**.
+
+**Why is the cap around 65%?**
+Human emotion is inherently subjective. The LIRIS-ACCEDE dataset was annotated via crowdsourcing, meaning the "ground truth" labels are averages of human opinions. Because there is heavy overlap between the "Neutral" class and the other classes, and because humans frequently disagree on the affective impact of a video, the data contains unavoidable noise. If a machine learning model were to score significantly above 65%, it would imply the model is more consistent at predicting human emotion than humans are at agreeing with each other. 
+
+Therefore, a 60-65% accuracy score represents a highly successful model that has reached the practical limits of agreement on this dataset.

@@ -21,3 +21,4 @@ imageio-ffmpeg==0.5.1
 transformers==4.47.1
 moviepy==1.0.3
 openai-whisper==20240930
+open-clip-torch==2.31.0

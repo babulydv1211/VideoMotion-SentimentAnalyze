@@ -208,7 +208,7 @@ class SemanticPillarExtractor:
         if self.config.use_panns:
             dims["audio"] = PILLAR_DIMS["audio"] + PANNS_CONTEXT_DIM
         if self.config.use_clip:
-            dims["spatial"] = ENGINEERED_SPATIAL_DIM + CLIP_CONTEXT_DIM
+            dims["spatial"] = CLIP_CONTEXT_DIM
         return dims
 
     @property
@@ -222,10 +222,7 @@ class SemanticPillarExtractor:
                 *(f"panns_audio_tag_{index:03d}" for index in range(PANNS_CONTEXT_DIM)),
             )
         if self.config.use_clip:
-            layouts["spatial"] = (
-                *PILLAR_FEATURES["spatial"][:ENGINEERED_SPATIAL_DIM],
-                *(f"clip_image_embedding_{index:03d}" for index in range(CLIP_CONTEXT_DIM)),
-            )
+            layouts["spatial"] = tuple(f"clip_image_embedding_{index:03d}" for index in range(CLIP_CONTEXT_DIM))
         dims = self.pillar_dims
         for name in PILLAR_NAMES:
             if len(layouts[name]) != dims[name]:  # Defensive developer invariant.
@@ -1220,7 +1217,10 @@ class SemanticPillarExtractor:
             for index, label in enumerate(context_labels):
                 if label:
                     labels_all[index].append(f"pretrained_context:{label}")
-        features = np.concatenate([engineered, context_projection], axis=1).astype(np.float32)
+        if self.config.use_clip:
+            features = context_projection
+        else:
+            features = np.concatenate([engineered, context_projection], axis=1).astype(np.float32)
         expected_dim = self.pillar_dims["spatial"]
         if features.shape != (len(frames), expected_dim):
             raise RuntimeError(
