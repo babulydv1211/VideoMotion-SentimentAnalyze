@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SceneMotion AI — Live Demo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    h1 { font-size: 2rem; font-weight: 700; text-align: center; }
+    h1 span { background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .sub { color: #64748b; text-align: center; margin-top: .4rem; margin-bottom: 2.5rem; font-size: .9rem; }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #334155;
+      border-radius: 14px;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.over {
+      border-color: #3b82f6;
+      background: rgba(59,130,246,.06);
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon { font-size: 2.5rem; margin-bottom: .75rem; }
+    .drop-label { font-size: .9rem; color: #94a3b8; }
+    .drop-label strong { color: #60a5fa; }
+
+    /* Preview */
+    #preview { width: 100%; border-radius: 12px; margin-top: 1rem; display: none; max-height: 220px; object-fit: cover; }
+
+    /* Analyze button */
+    .btn {
+      width: 100%;
+      margin-top: 1.25rem;
+      padding: .85rem;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      display: none;
+    }
+    .btn:hover { opacity: .9; }
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Spinner */
+    .spinner {
+      display: none;
+      margin: 1.5rem auto 0;
+      width: 36px; height: 36px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result */
+    #result {
+      display: none;
+      margin-top: 1.5rem;
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+      border: 1px solid;
+    }
+    .result-label { font-size: 1.75rem; font-weight: 700; margin-bottom: .25rem; }
+    .result-conf { font-size: .8rem; color: #94a3b8; margin-bottom: 1rem; }
+    .prob-row { display: flex; justify-content: space-between; align-items: center; font-size: .78rem; margin-bottom: .4rem; }
+    .prob-name { width: 60px; text-align: left; }
+    .prob-bar-track { flex: 1; height: 6px; background: #0f172a; border-radius: 99px; margin: 0 .75rem; overflow: hidden; }
+    .prob-bar-fill { height: 100%; border-radius: 99px; transition: width .8s ease; }
+    .prob-val { width: 40px; text-align: right; font-weight: 600; }
+
+    .result-pos { background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.3); }
+    .result-neu { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.3); }
+    .result-neg { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.3); }
+
+    .error-msg { margin-top: 1rem; padding: .75rem; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: 10px; color: #fca5a5; font-size: .82rem; display: none; text-align: center; }
+
+    .footer { margin-top: 2rem; color: #334155; font-size: .72rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h1>🎬 <span>SceneMotion AI</span></h1>
+  <p class="sub">Upload a video clip · Get live sentiment prediction · CLIP ViT-B/32 + MLP (43.95% macro-F1)</p>
+
+  <div class="card">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="video/*" />
+      <div class="drop-icon">🎥</div>
+      <div class="drop-label">Drop a video here or <strong>click to browse</strong><br /><small style="color:#475569;">MP4, MOV, AVI — up to 15 seconds used</small></div>
+    </div>
+
+    <video id="preview" controls></video>
+    <button class="btn" id="analyzeBtn" onclick="analyze()">✨ Analyze Sentiment</button>
+    <div class="spinner" id="spinner"></div>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div id="result">
+      <div class="result-label" id="resultLabel"></div>
+      <div class="result-conf" id="resultConf"></div>
+      <div id="probBars"></div>
+    </div>
+  </div>
+
+  <p class="footer">Model: CLIP ViT-B/32 + Audio MFCC + Optical Flow → sklearn MLP &nbsp;·&nbsp; LIRIS-ACCEDE dataset</p>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const dropZone  = document.getElementById('dropZone');
+    const preview   = document.getElementById('preview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const spinner   = document.getElementById('spinner');
+    const result    = document.getElementById('result');
+    const errorMsg  = document.getElementById('errorMsg');
+
+    let selectedFile = null;
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('over');
+      if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+    });
+
+    function setFile(file) {
+      selectedFile = file;
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.style.display = 'block';
+      analyzeBtn.style.display = 'block';
+      result.style.display = 'none';
+      errorMsg.style.display = 'none';
+    }
+
+    async function analyze() {
+      if (!selectedFile) return;
+      analyzeBtn.disabled = true;
+      spinner.style.display = 'block';
+      result.style.display = 'none';
+      errorMsg.style.display = 'none';
+
+      const form = new FormData();
+      form.append('video', selectedFile);
+
+      try {
+        const res = await fetch('/predict', { method: 'POST', body: form });
+        const data = await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        // Show result
+        const label = data.label;
+        const conf  = (data.confidence * 100).toFixed(1);
+        const probs = data.probabilities;
+
+        const emoji = label === 'Positive' ? '😊' : label === 'Negative' ? '😟' : '😐';
+        const cls   = label === 'Positive' ? 'result-pos' : label === 'Negative' ? 'result-neg' : 'result-neu';
+        const color = label === 'Positive' ? '#22c55e' : label === 'Negative' ? '#ef4444' : '#f59e0b';
+
+        document.getElementById('resultLabel').textContent = `${emoji} ${label}`;
+        document.getElementById('resultLabel').style.color = color;
+        document.getElementById('resultConf').textContent = `Model confidence: ${conf}%`;
+
+        result.className = cls;
+        result.style.display = 'block';
+
+        const bars = ['Negative', 'Neutral', 'Positive'];
+        const barColors = { Negative: '#ef4444', Neutral: '#f59e0b', Positive: '#22c55e' };
+        document.getElementById('probBars').innerHTML = bars.map(cls => {
+          const pct = (probs[cls] * 100).toFixed(1);
+          return `
+            <div class="prob-row">
+              <div class="prob-name" style="color:${barColors[cls]}">${cls}</div>
+              <div class="prob-bar-track">
+                <div class="prob-bar-fill" style="width:0%;background:${barColors[cls]}" data-w="${pct}%"></div>
+              </div>
+              <div class="prob-val">${pct}%</div>
+            </div>`;
+        }).join('');
+
+        // Animate bars
+        setTimeout(() => {
+          document.querySelectorAll('.prob-bar-fill').forEach(el => {
+            el.style.width = el.dataset.w;
+          });
+        }, 50);
+
+      } catch (err) {
+        errorMsg.textContent = `Error: ${err.message}`;
+        errorMsg.style.display = 'block';
+      } finally {
+        analyzeBtn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>

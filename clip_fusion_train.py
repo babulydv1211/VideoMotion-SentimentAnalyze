@@ -14,6 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+import joblib
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 CLIP_CACHE    = Path(r".\scene_motion_llm\cache\clip_vitb32_v1")
@@ -196,6 +197,11 @@ def main():
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\n  Report saved to {report_path}")
+
+    # Save the trained model for inference
+    model_path = OUTPUT_DIR / "clip_mlp_model.joblib"
+    joblib.dump(best_model, model_path)
+    print(f"  Model saved to {model_path}")
     print("\n  DONE!")
     return 0
 

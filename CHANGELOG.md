@@ -2,16 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] — Semantic Five-Pillar v2 (in progress)
+## [Unreleased] — Overnight Training (queued)
 
-### In Progress
-- Feature precomputation of all 9,800 LIRIS-ACCEDE clips into `cache/semantic_five_pillar_v2/`
-- Model training not yet started (runs after cache completes via `run_train.ps1`)
+### Next
+- Full 40-epoch overnight training of 5-pillar neural model with CLIP spatial pillar
+- Target: 50–62% test macro-F1 (SOTA ceiling ~65%)
+- Command: `semantic_five_pillar_training --epochs 40 --embedding-dim 128 ...` (see README)
 
-### Planned
-- PANNs CNN14 audio tagging (Apache 2.0) inside audio pillar
-- CLIP ViT-B/32 (MIT) scene embeddings inside spatial pillar
-- Whisper → RoBERTa transcript sentiment wired into audio pillar
+---
+
+## [3.0.0] — CLIP ViT-B/32 Spatial Pillar Integration  *(2026-09-19)*
+
+### Experiment Results (cumulative)
+
+| Stage | Model | Test Accuracy | Test Macro-F1 |
+|-------|-------|:---:|:---:|
+| Baseline (v1) | ResNet18 + random split | ~64.8% | — (majority-class shortcut) |
+| Rewrite (v2) | ResNet18 + MFCC + Optical Flow, official splits | ~40% | ~40% |
+| CLIP MLP (v3a) | CLIP ViT-B/32 + MLP, official splits | 43.82% | 43.95% |
+| **5-Pillar Neural (v3b)** | **CLIP + Audio + Color + Motion + Temporal, BiGRU fusion** | **TBD** | **TBD** |
+
+> The v1 "64.8% accuracy" was a Neutral-class shortcut (majority-class bias), not real learning.
+> The dataset's human-labelling noise caps genuine models at ~60–65%.
+
+### Added
+- `clip_precompute.py` — extracts 512-dim L2-normalized CLIP ViT-B/32 embeddings for all
+  9,800 LIRIS-ACCEDE clips (mean of 16 frames). Cached to `cache/clip_vitb32_v1/`.
+- `clip_fusion_train.py` — sklearn MLP baseline fusing CLIP visual + MFCC audio + optical
+  flow motion features. Grid-searches hidden layer size. Reports val + test metrics.
+- `merge_clip_cache.py` — one-off data migration script that swaps the 24-dim handcrafted
+  spatial features for 512-dim CLIP embeddings in the canonical five-pillar cache.
+  Produces `cache/semantic_five_pillar_v3_clip/` (9,800 merged `.npz` files).
+- `README.md` (root) — GitHub landing page with architecture overview, SOTA context,
+  inference instructions, repo structure, and web UI guide.
+
+### Changed
+- `training/semantic_five_pillar_training.py`:
+  - Spatial pillar input dimension upgraded from **24 → 512** to accept CLIP features.
+  - `_cache_is_current()` bypass added to accept the custom v3 merged cache.
+  - `pillar_dims["spatial"] = 512` injected in both `train` mode code paths.
+- `scene_motion_llm/README.md` — added **State-of-the-Art & Benchmark Context** section
+  explaining the 60–65% ceiling and why it is a hard human-noise limit.
+
+### Design Decisions
+- CLIP embeddings are L2-normalized before saving (unit-sphere → consistent scale for the
+  fusion gate's reliability softmax).
+- Sequence length T=16 matched exactly between the original cache and CLIP extraction,
+  so the merge is a simple array swap with no interpolation.
+- Cache signature validation bypassed only for the custom v3 merged cache; the original
+  extractor's strong cache contract remains intact for the v2 cache.
+- Recommended fine-tuned hyperparams for overnight run: `embedding_dim=128`,
+  `attention_dim=64`, `temporal_hidden_dim=128`, `fusion_hidden_dim=256`,
+  `lr=3e-4`, `weight_decay=1e-3`, `epochs=40`.
 
 ---
 
