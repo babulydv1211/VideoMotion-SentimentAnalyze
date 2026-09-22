@@ -1,24 +1,44 @@
-# Runtime dependencies for SceneMotion-LLM.
-# Install development tools separately with: pip install -r requirements-dev.txt
+# SceneMotion AI — Rule-Based 6-Pillar Expert System
+# Zero-shot video sentiment classifier (no training required)
 
-# Model training and video processing
-torch==2.5.1
-torchvision==0.20.1
-numpy==1.26.4
-opencv-python==4.10.0.84
-scikit-learn==1.5.2
-h5py==3.12.1
-tqdm==4.67.1
+# ── Core ML Frameworks ────────────────────────────────────────────────────────
+torch==2.5.1                    # Backend for CLIP, Whisper, DistilBERT
+torchvision==0.20.1             # Image preprocessing utilities
+numpy==1.26.4                   # Numerical computing
 
-# Optional, first-party interfaces included in this repository
-streamlit==1.41.1
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
+# ── Computer Vision ───────────────────────────────────────────────────────────
+opencv-python==4.10.0.84        # Optical flow, HSV color analysis, frame processing
 
-# Multimodal Audio / Text dependencies
-librosa==0.10.2
-imageio-ffmpeg==0.5.1
-transformers==4.47.1
-moviepy==1.0.3
-openai-whisper==20240930
-open-clip-torch==2.31.0
+# ── Multimodal Models ─────────────────────────────────────────────────────────
+open-clip-torch==2.31.0         # CLIP zero-shot visual semantics (Pillar 1)
+openai-whisper==20240930        # Speech-to-text transcription (Pillar 2)
+transformers==4.47.1            # DistilBERT emotion classifier (Pillar 2)
+
+# ── Audio Processing ──────────────────────────────────────────────────────────
+librosa==0.10.2                 # Audio waveform analysis (Pillar 3)
+
+# ── Video I/O ─────────────────────────────────────────────────────────────────
+moviepy==1.0.3                  # Video decoding and frame extraction
+imageio-ffmpeg==0.5.1           # FFmpeg backend for MoviePy
+
+# ── Web Interface ─────────────────────────────────────────────────────────────
+streamlit==1.41.1               # Interactive web UI (app.py)
+
+# ── Application utilities ─────────────────────────────────────────────────────
+# Used by the speech pillar's lexical-validity guard.
+pyspellchecker==0.9.0
+# Imported directly when converting decoded video frames for CLIP.
+Pillow>=10.0.0
+
+# ── Development Tools (install separately) ────────────────────────────────────
+# pytest==8.3.4                 # Unit testing
+# black==24.10.0                # Code formatting
+# flake8==7.1.1                 # Linting
+
+# ── Archived Dependencies (not needed for rule-based system) ──────────────────
+# These were used by the neural training pipeline (now in archive/):
+# scikit-learn                  # Train/val splits, metrics
+# h5py                          # Feature cache storage
+# tqdm                          # Progress bars for training
+# fastapi                       # REST API for legacy neural model
+# uvicorn                       # ASGI server for FastAPI

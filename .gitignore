@@ -3,6 +3,7 @@
 # ========================
 __pycache__/
 .pytest_cache/
+.pytest-run/
 .coverage
 coverage.xml
 htmlcov/
@@ -19,6 +20,9 @@ build/
 # Virtual Environments
 # ========================
 .venv/
+.venv311/
+.codex-venv/
+.research-venv/
 venv/
 ENV/
 env/

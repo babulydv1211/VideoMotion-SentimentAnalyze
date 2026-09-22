@@ -1,287 +1,238 @@
-# SceneMotion-LLM — Project Context & Continuation Guide
+# SceneMotion AI — Project Context & Quick Start
 
-> Last updated: 2026-09-16 04:18 (PDT)
-> Purpose: Load this file at the start of any new chat session to instantly resume work.
-
----
-
-## 1. What This Project Is
-
-**SceneMotion-LLM** is a video affect (sentiment) classification system.
-It classifies short video clips (up to 15 seconds) into **Positive**, **Neutral**, or **Negative** sentiment.
-
-- **Dataset**: LIRIS-ACCEDE — 9,800 movie clips ranked by human emotional valence.
-- **Labels** are derived from official `valenceRank` split into fixed global thirds:
-
-| Class    | Rank range  | Class index |
-|----------|-------------|-------------|
-| Negative | 0 – 3265    | 2           |
-| Neutral  | 3266 – 6532 | 1           |
-| Positive | 6533 – 9799 | 0           |
-
-- **Official splits**: from `ACCEDEsets.txt` (`1=train`, `2=validation`, `0=test`).
-- **UI**: Streamlit app at `scene_motion_llm/app.py`.
-- **Package root**: `scene_motion_llm/` (this is where `.git` lives).
+> Last updated: 2026-09-21
+> Purpose: Quick onboarding guide for new developers or continuation after a break
 
 ---
 
-## 2. Architecture Evolution
+## What This Project Is
 
-### Legacy model (do not use for new work)
-- Visual appearance (ResNet) + optical flow via LSTM + temporal attention.
-- Found in `scene_motion_llm/models/sentiment_classifier.py`.
-- Weakness: learned Neutral-class shortcuts; not truly multimodal.
+**SceneMotion AI** is a **zero-shot, rule-based video sentiment classifier** that analyzes short clips (up to 15 seconds) and outputs **Negative**, **Neutral**, or **Positive** sentiment.
 
-### Current canonical model: Semantic Five-Pillar Fusion
-Five synchronized descriptive feature streams → per-pillar soft P/N/N opinion + reliability score → learned reliability-gated fusion → final label.
+**Key features:**
+- ✅ Works immediately (no training required)
+- ✅ Local inference after the required model weights have been downloaded once
+- ✅ Fully explainable (shows per-pillar voting breakdown)
+- ✅ Transparent, hand-authored rules and per-pillar vote breakdowns
+
+---
+
+## How It Works (High-Level)
+
+The system uses **6 independent expert modules** (pillars) that each analyze a different aspect of the video:
 
 ```
-Video Clip
-│
-├── Audio Pillar (20 features)
-│   ├── RMS energy, dynamic range, zero crossing rate
-│   ├── Spectral centroid/rolloff/bandwidth/flatness
-│   ├── Onset strength/density, global tempo
-│   ├── Low/mid/high band ratio, spectral slope
-│   ├── Amplitude modulation, active_audio_fraction
-│   └── audio_present flag (gates entire pillar if mute)
-│
-├── Color Pillar (16 features)
-│   ├── brightness, brightness_std, dark/bright pixel fraction
-│   ├── saturation, hue (sin+cos), warm/cool balance
-│   ├── colorfulness, luminance contrast/entropy
-│   └── daylight_proxy, nighttime_proxy
-│
-├── Spatial Pillar (24 features)
-│   ├── edge density/orientation, texture detail
-│   ├── luminance entropy, center saliency proxy
-│   ├── horizontal/vertical balance, rule-of-thirds proxy
-│   ├── face count/area proxy (OpenCV Haar)
-│   └── 8× ResNet-18 projection dims (when --use-pretrained-spatial)
-│
-├── Motion Pillar (14 features)
-│   ├── mean/p90/std flow speed, active_motion_fraction
-│   ├── global_flow_coherence, direction_entropy
-│   ├── global_translation_proxy, motion_acceleration
-│   ├── mean horizontal/vertical flow, localized_motion_fraction
-│   └── flow_spread, kinematic_intensity_proxy
-│
-└── Temporal Pillar (12 features)
-    ├── relative_time, luminance/color/brightness/saturation delta
-    ├── cut_like_change_proxy, motion_speed, motion_acceleration
-    ├── visual_activity, cumulative_visual_change
-    └── audio_energy_change, audio_visual_sync_proxy
+Video → MoviePy extraction → 16 frames + audio
+    ↓
+┌─────────────────────────────────────────────────┐
+│ P1: CLIP (40%)        → Visual semantics        │
+│ P2: Whisper+BERT (10%)→ Spoken words            │
+│ P3: Librosa (25%)     → Audio tone (waveform)   │
+│ P4: OpenCV HSV (5%)   → Color mood              │
+│ P5: Optical Flow (15%)→ Motion intensity        │
+│ P6: Frame Diff (5%)   → Shot cuts               │
+└─────────────────────────────────────────────────┘
+    ↓
+Dynamic entropy-weighted fusion
+    ↓
+Final: Negative / Neutral / Positive (+ confidence)
 ```
 
-**Key design principle**: No pillar hard-codes a sentiment rule.
-A dark frame → low `daylight_proxy`, not "Negative". 
-A mute clip → `audio_present = 0`, audio fusion weight = exactly 0.
-The model *learns* how features relate to valence labels from LIRIS training data.
-
-**Relevant files:**
-- `scene_motion_llm/models/semantic_five_pillar.py` — model architecture
-- `scene_motion_llm/utils/semantic_pillars.py` — feature extractors
-- `scene_motion_llm/training/semantic_five_pillar_training.py` — training pipeline
-- `scene_motion_llm/inference/semantic_five_pillar_inference.py` — inference
-- `scene_motion_llm/app.py` — Streamlit UI
+**Dynamic fusion:** Each pillar is downweighted according to the entropy of its own score distribution. A uniform non-speech vote retains 20% of its base weight before the weights are normalized; a uniform speech vote abstains entirely. This is a heuristic reliability rule, not calibrated uncertainty.
 
 ---
 
-## 3. Current State (as of 2026-09-16)
+## Project Structure
 
-### ✅ Done
-- Complete five-pillar extractor implemented and tested.
-- ResNet-18 spatial pretrained embeddings integrated (via `--use-pretrained-spatial`).
-- RoBERTa text module scaffolded in `models/audio_modules.py`.
-- Streamlit UI updated to show per-pillar evidence, reliability, confidence.
-- Unit tests passing: `tests/test_semantic_five_pillar_inference.py` (3/3), `tests/test_semantic_five_pillar_training.py` (3/3).
-- `monitor.py` created in project root for live progress monitoring.
+```
+sentiment_analysis/               ← workspace root
+├── app.py                        ← MAIN ENTRY POINT (rule-based system)
+├── README.md                     ← Full technical documentation
+├── PROJECT_CONTEXT.md            ← This file
+├── requirements.txt              ← Python dependencies
+├── .codex-venv/                  ← Local virtual environment (ignored by Git)
+├── utils/                        ← Utility functions (if any)
+├── tests/                        ← Unit tests for active rules and shared pipeline utilities
+└── archive/                      ← Neural training system (archived)
+    ├── training/                 ← LIRIS-ACCEDE training pipeline
+    ├── models/                   ← Sequence fusion model
+    ├── inference/                ← Checkpoint-based inference
+    ├── app.py                    ← Old neural Streamlit UI
+    └── test_*.py                 ← Neural model tests
+```
 
-### 🔄 In Progress RIGHT NOW
-**Feature precomputation is running in background (do not kill).**
+---
+
+## Quick Start
+
+### 1. Activate Virtual Environment
 
 ```powershell
-python -u -m scene_motion_llm.training.semantic_five_pillar_training `
-  --mode precompute `
-  --video-dir .\scene_motion_llm\dataset\Liris_Accede `
-  --ranking-path .\scene_motion_llm\dataset\annotations\ACCEDEranking.txt `
-  --sets-path C:\Users\student\Downloads\LIRIS-ACCEDE-annotations\LIRIS-ACCEDE-annotations\annotations\ACCEDEsets.txt `
-  --cache-dir .\scene_motion_llm\cache\semantic_five_pillar_v2 `
-  --use-pretrained-spatial --spatial-device cpu
+# Windows PowerShell
+.\.codex-venv\Scripts\Activate.ps1
 ```
 
-Monitor progress anytime:
-```powershell
-python monitor.py
-```
-
-Cache target: `scene_motion_llm/cache/semantic_five_pillar_v2/`
-- `train/` → ~6,533 clips
-- `validation/` → ~1,634 clips
-- `test/` → ~1,633 clips
-
-### ❌ Not Started Yet
-- PANNs audio tagging integration
-- CLIP spatial embeddings
-- Full Whisper → RoBERTa wiring into pillar extractor
-- Training the model
-- Evaluation on test set
-
----
-
-## 4. Next Steps (Ordered)
-
-### Step 1 — Wait for precompute to finish
-Check with `python monitor.py`. When all three splits are full, proceed.
-
-### Step 2 — Run training
-```powershell
-python -m scene_motion_llm.training.semantic_five_pillar_training `
-  --mode train `
-  --video-dir .\scene_motion_llm\dataset\Liris_Accede `
-  --ranking-path .\scene_motion_llm\dataset\annotations\ACCEDEranking.txt `
-  --sets-path C:\Users\student\Downloads\LIRIS-ACCEDE-annotations\LIRIS-ACCEDE-annotations\annotations\ACCEDEsets.txt `
-  --cache-dir .\scene_motion_llm\cache\semantic_five_pillar_v2 `
-  --checkpoint-dir .\scene_motion_llm\checkpoints\semantic_five_pillar `
-  --epochs 25 --batch-size 16 --device cuda --use-pretrained-spatial
-```
-(Use `--device cpu` if no GPU available — will be slower.)
-
-Best checkpoint selected by validation macro-F1 → saved as `best_semantic_five_pillar.pt`.
-
-### Step 3 — Establish baseline accuracy
-Expected honest range: **~55–65% balanced accuracy**, **macro-F1 ~0.55–0.60**.
-This is the baseline. Any number below 50% means something is wrong (worse than random for 3 balanced classes is a red flag).
-
-### Step 4 — Upgrade pillars with free local pretrained models
-
-All models below are **free, local, no API key, reproducible**:
-
-| Pillar | Upgrade | Model | License | Notes |
-|--------|---------|-------|---------|-------|
-| Audio | Audio event tagging (music, speech, alarm, ambience) | **PANNs CNN14** | Apache 2.0 ✅ | ~300MB, download once |
-| Audio | Speech transcription | **Whisper tiny/base** | MIT ✅ | Already in requirements.txt |
-| Audio | Transcript → sentiment embedding | **RoBERTa-base** | MIT ✅ | Already scaffolded in audio_modules.py |
-| Spatial | Scene/object/concept embeddings | **CLIP ViT-B/32** (OpenAI) | MIT ✅ | Replaces ResNet, much richer |
-| Motion | Better optical flow | **RAFT-small** | BSD ✅ | ~5MB, very fast |
-
-**All models are free forever, run 100% locally, no API key, no quota, no billing.**
-
-**Explicitly excluded (do not add):**
-- ~~YOLOv8~~ → AGPL-3.0, requires paid enterprise license for any non-open product
-- ~~Hugging Face Inference API~~ → only $0.10/month free, then pay-as-you-go, non-reproducible
-- ~~Any cloud vision/NLP API~~ → Google Vision, AWS Rekognition, Azure CV all have per-request costs
-
-### Step 5 — Retrain with enhanced pillars and measure delta
-Compare baseline F1 vs enhanced F1. Expected uplift from CLIP + PANNs: **+5 to +15 percentage points**.
-
----
-
-## 5. Architectural Philosophy (Important — Do Not Break These Rules)
-
-1. **Sub-features are evidence, not rules.**
-   `dark_pixel_fraction = 0.8` → "evidence leaning Negative" not "= Negative".
-   A dark romantic scene with happy audio might still be Positive. The fusion gate decides.
-
-2. **Missing modalities are first-class.**
-   Mute video: audio pillar weight = 0 automatically.
-   Black/low-detail frame: spatial/color reliability scores drop but pillars stay enabled.
-
-3. **No cloud APIs in the training or inference pipeline.**
-   Download weights once, cache locally, train and infer offline forever.
-
-4. **Per-pillar soft P/N/N opinions feed into fusion.**
-   Each pillar outputs a (3,) soft probability vector + scalar reliability.
-   Fusion gate learns to weight and combine these per-clip.
-
-5. **Ordinal loss is worth trying.**
-   Negative→Neutral→Positive has order. Ordinal cross-entropy penalizes
-   predicting Positive for Negative more than predicting Neutral.
-   Add this once baseline is established.
-
----
-
-## 6. Repo Layout
-
-```
-sentiment_analysis/              ← workspace root (no .git here)
-├── monitor.py                   ← live precompute progress tracker
-├── PROJECT_CONTEXT.md           ← THIS FILE
-├── setup.py                     ← installs scene_motion_llm package
-├── requirements.txt             ← points to scene_motion_llm/requirements.txt
-├── tests/                       ← pytest test suite
-│   ├── test_semantic_five_pillar_inference.py   ✅ 3 pass
-│   ├── test_semantic_five_pillar_training.py    ✅ 3 pass
-│   └── test_inference_checkpoint.py             ⚠️ needs transformers in venv
-└── scene_motion_llm/            ← actual package (.git lives here)
-    ├── app.py                   ← Streamlit UI
-    ├── train_pipeline.py        ← CLI entry point
-    ├── models/
-    │   ├── semantic_five_pillar.py   ← CANONICAL MODEL
-    │   ├── sentiment_classifier.py  ← legacy (keep but don't train)
-    │   └── audio_modules.py         ← AudioLSTM + TextRoBERTa
-    ├── inference/
-    │   └── semantic_five_pillar_inference.py
-    ├── training/
-    │   └── semantic_five_pillar_training.py
-    ├── utils/
-    │   └── semantic_pillars.py       ← ALL FEATURE EXTRACTORS
-    ├── cache/
-    │   └── semantic_five_pillar_v2/  ← precomputed features (in progress)
-    └── checkpoints/
-        └── semantic_five_pillar/     ← training will write here
-```
-
----
-
-## 7. How to Run the Streamlit App
+### 2. Run the Streamlit App
 
 ```powershell
-# From project root (sentiment_analysis/)
-.\.venv\Scripts\Activate.ps1
-streamlit run scene_motion_llm\app.py
+python -m streamlit run app.py
 ```
 
-The app will:
-- Auto-detect the best available checkpoint
-- Show "Five-pillar checkpoint found" if `best_semantic_five_pillar.pt` exists
-- Fall back to legacy model with a warning if only old checkpoint found
-- Show per-pillar evidence bars + confidence after upload
+### 3. Use the System
+
+1. Open browser (Streamlit auto-launches to `localhost:8501`)
+2. Upload a video file (max 15 seconds, any common format)
+3. Click "Analyze Sentiment"
+4. View results:
+   - Final sentiment (Neg/Neu/Pos) with confidence %
+   - Per-pillar breakdown (how each module voted)
+   - Transcript (if speech detected)
+   - Evidence details (motion, color, etc.)
 
 ---
 
-## 8. Key Design Decisions Made
+## Dependencies
 
-| Decision | Reason |
-|----------|--------|
-| Use LIRIS official splits (ACCEDEsets.txt) | Avoids random-split data leakage; makes results reproducible |
-| Fixed global thirds for labels | Avoids per-split threshold drift; consistent across runs |
-| Reliability gating over hard missing-modality rules | Graceful degradation for any real-world clip |
-| Cache features before training | ~9,800 × 5 pillars is expensive; caching lets you iterate on the model fast |
-| ResNet-18 over larger models for spatial | Speed / memory tradeoff for 9,800-video cache on CPU |
-| CLIP over YOLO for spatial upgrade | CLIP is MIT licensed and gives semantic scene embeddings, not just boxes |
+**Core models (downloaded once, cached locally):**
+- **CLIP** `ViT-B-32` — Visual semantics (~350MB)
+- **Whisper** `base` — Speech-to-text (~140MB)
+- **DistilBERT** emotion — Text sentiment (~260MB)
+- **Librosa** — Audio feature extraction (DSP, no model)
+- **OpenCV** — Computer vision primitives
+
+**Python packages:**
+- `streamlit` — Web UI
+- `open_clip_torch` — CLIP interface
+- `openai-whisper` — Speech recognition
+- `transformers` — DistilBERT
+- `librosa` — Audio analysis
+- `moviepy` — Video I/O
+- `opencv-python` — Vision processing
+- `torch` — Backend for neural models
+- `numpy`, `Pillow` — Standard numerical/image tools
+
+All dependencies are in `requirements.txt`.
 
 ---
 
-## 9. Open Questions / Things to Decide Later
+## Key Design Decisions
 
-- [ ] Should we add ordinal loss to the training objective?
-- [ ] Should we try continuous valence regression as an auxiliary loss?
-- [ ] Should we create a small real-world test set (100–300 clips, 3 human annotators)?
-- [ ] Should CLIP replace ResNet or be added as extra dimensions in the spatial pillar?
-- [ ] Should PANNs audio tags be concatenated to acoustic features or be a separate sub-model?
-- [ ] Should Whisper run on every clip or only when `audio_present > 0.5`?
+### Why Rule-Based Instead of Learned?
+
+1. **No training data needed** — runs once its pretrained model weights are available locally
+2. **Inspectable** — per-pillar scores and effective fusion weights can be reviewed
+3. **Deterministic given fixed model/runtime versions** — model upgrades and video decoding can still affect results
+4. **Transparent heuristic defaults** — weights are documented rather than learned
+
+### Why These Specific Weights?
+
+| Pillar | Weight | Justification |
+|---|---|---|
+| Spatial (CLIP) | 40% | Primary visual-semantic signal |
+| Acoustic | 25% | Primary audio-prosody signal |
+| Motion | 15% | Auxiliary motion/arousal cue |
+| Speech | 10% | Transcript/emotion cue with abstention safeguards |
+| Color | 5% | Mood + arousal secondary signal |
+| Temporal | 5% | Shot cut tension indicator |
+
+**Dynamic adjustment:** each pillar's base weight is multiplied by a score-concentration factor derived from Shannon entropy, then all effective weights are normalized. Uniform speech is an abstention. These are heuristic weights, not calibrated probabilities or a validated psychological measurement scale.
+
+### Why Not Train on LIRIS-ACCEDE?
+
+An earlier experiment reported about **33% accuracy** while tuning on LIRIS-ACCEDE, whose labels describe human viewer affect. That result should be treated as a warning that this rule-based classifier has not been validated for that target, not as proof that the mismatch is the only cause.
+
+**Root cause discovered:** LIRIS labels measure **induced emotion** (how viewers *feel*), while our system measures **expressed emotion** (what signals *exist* in the video). These are fundamentally different:
+- A horror movie → viewer feels fear (induced: Negative) but the video itself may show calm imagery before the jumpscare (expressed: Neutral)
+- A sad documentary → viewer cries (induced: Negative) but narrator speaks calmly (expressed: partial Neutral)
+
+Training on ACCEDE may optimize for viewer-induced affect rather than the content cues this demo uses. Choose and document a labeled evaluation set that matches the intended task before making performance claims.
 
 ---
 
-## 10. How to Resume in a New Chat
+## Archived Neural System
 
-Paste this at the start of a new conversation:
-```
-I'm continuing work on SceneMotion-LLM video sentiment classification.
-Please read PROJECT_CONTEXT.md at the project root 
-(c:\Users\student\Desktop\sentiment_analysis\PROJECT_CONTEXT.md)
-and then tell me the current state and what to do next.
+The `archive/` directory contains a **trainable sequence fusion model** that was developed but ultimately not used. It includes:
+- Full LIRIS-ACCEDE training pipeline
+- Feature extraction + caching system
+- BiGRU temporal sequence encoder
+- Learned reliability-weighted fusion
+
+**Why archived:**
+- Requires 9,800-video dataset + hours of preprocessing
+- Learned weights aren't more explainable
+- Empirical tuning hit the induced/expressed emotion gap
+- Rule-based system already works well
+
+The archived code is fully functional if you want to experiment with learned fusion in the future.
+
+---
+
+## Testing
+
+Run tests to verify the system:
+
+```powershell
+# Run all tests with the project environment
+.\.codex-venv\Scripts\python.exe -m pytest -q
+
+# Run focused active-app rule tests
+.\.codex-venv\Scripts\python.exe -m pytest tests/test_rule_based_pillars.py -q
 ```
 
-The agent will read this file and have full context instantly.
+**Note:** Neural model tests have been moved to `archive/`. Active tests focus on the rule-based system.
+
+---
+
+## Common Issues
+
+### "Model not found" errors on first run
+**Solution:** Models download automatically on first use. Ensure internet connection for initial setup (~750MB total).
+
+### Out of memory (OOM)
+**Solution:**
+- Use CPU mode: Set `DEVICE = "cpu"` in `app.py`
+- Reduce batch size if processing multiple videos
+- Click "Clear Cache" in the app header between analyses
+
+### Whisper fails / no transcript
+**Solution:** Whisper requires `ffmpeg`. Install via:
+```powershell
+# Windows (requires Chocolatey)
+choco install ffmpeg
+```
+
+### Video upload fails
+**Solution:** MoviePy uses `ffmpeg` for decoding. Supported upload formats are MP4, AVI, MOV, and MKV. The app analyzes the first 15 seconds of longer clips.
+
+---
+
+## Next Steps / Future Work
+
+**Potential enhancements:**
+1. **Batch processing** — analyze multiple videos in one session
+2. **Export results** — save analysis as JSON/CSV
+3. **Threshold tuning** — let users adjust pillar weights via UI sliders
+4. **Custom prompts** — allow users to define their own CLIP text prompts
+5. **Face detection integration** — boost spatial confidence when faces detected
+6. **Audio event tagging** — add PANNs for music/speech/ambient classification
+
+**Not recommended:**
+- Training on LIRIS-ACCEDE (induced vs expressed emotion mismatch)
+- Adding more pillars (diminishing returns, complexity increases)
+- Cloud API integration (defeats the local/offline value proposition)
+
+---
+
+## References
+
+- **Mehrabian & Ferris (1967).** Inference of attitudes from nonverbal communication in two channels. *Journal of Consulting Psychology*.
+- **Russell (1980).** A circumplex model of affect. *Journal of Personality and Social Psychology*.
+- **Ekman (1992).** An argument for basic emotions. *Cognition & Emotion*.
+- **Radford et al. (2021).** Learning Transferable Visual Models From Natural Language Supervision. *ICML*. (CLIP)
+- **Cutting et al. (2010).** Attention and the evolution of Hollywood film. *Psychological Science*.
+
+---
+
+## Questions?
+
+Read `README.md` for full technical details on each pillar, fusion algorithm, and experimental validation.
