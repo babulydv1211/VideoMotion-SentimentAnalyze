@@ -151,6 +151,10 @@ The base weights and rules are manually selected engineering heuristics. The sou
 
 Before making performance claims, evaluate this exact version of `app.py` on a labeled, held-out video set that matches the intended use case. Report class balance, the labeling protocol (for example, expressed versus viewer-induced affect), accuracy, macro-F1, a confusion matrix, and failure cases. Do not infer psychological traits, mental health status, safety, violence, or intent from these outputs.
 
+### Mathematical Accuracy Tests
+
+The project includes a comprehensive, independent test suite (`tests/test_pillar_math_accuracy.py`) that strictly validates the mathematical behavior of all six pillars and the fusion orchestrator. These tests do not rely on AI theory, pretrained ML checkpoints, external network calls, or large video files; they assert that the exact formulas, smoothing caps, abstention rules, and distribution constraints encoded in the system operate correctly at the field level.
+
 ## Historical archive
 
 `archive/` contains the earlier trainable five-pillar neural-model code and its historical tests. It is separate from the active root `app.py` demo and is not required by the quick-start workflow above.

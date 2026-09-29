@@ -6,9 +6,17 @@ Transformers, or a network resource.
 
 from __future__ import annotations
 
+import pytest
+import tempfile
+from pathlib import Path
 import numpy as np
 
 import six_pillar_audio as audio
+
+@pytest.fixture
+def safe_tmp_path():
+    with tempfile.TemporaryDirectory() as d:
+        yield Path(d)
 
 
 class _KnownWords:
@@ -39,8 +47,8 @@ def _audio_loader(samples: np.ndarray, sample_rate: int):
     return load
 
 
-def _wav_path(tmp_path):
-    path = tmp_path / "clip.wav"
+def _wav_path(safe_tmp_path):
+    path = safe_tmp_path / "clip.wav"
     path.touch()
     return path
 
@@ -58,7 +66,7 @@ def _good_segments():
     ]
 
 
-def test_speech_rejects_whisper_no_speech_metadata(tmp_path):
+def test_speech_rejects_whisper_no_speech_metadata(safe_tmp_path):
     rate = 16_000
     samples = np.full(rate * 2, 0.05, dtype=np.float32)
     whisper = _Whisper(
@@ -78,7 +86,7 @@ def test_speech_rejects_whisper_no_speech_metadata(tmp_path):
     )
 
     result = audio.run_speech_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         whisper,
         lambda _text: [{"label": "joy", "score": 1.0}],
         spellchecker=_KnownWords(),
@@ -91,7 +99,7 @@ def test_speech_rejects_whisper_no_speech_metadata(tmp_path):
     np.testing.assert_allclose(result.probs, [1 / 3, 1 / 3, 1 / 3])
 
 
-def test_speech_smooths_a_text_model_extreme_using_input_quality(tmp_path):
+def test_speech_smooths_a_text_model_extreme_using_input_quality(safe_tmp_path):
     rate = 16_000
     time = np.arange(rate * 2, dtype=np.float32) / rate
     samples = 0.08 * np.sin(2 * np.pi * 180 * time)
@@ -103,7 +111,7 @@ def test_speech_smooths_a_text_model_extreme_using_input_quality(tmp_path):
     )
 
     result = audio.run_speech_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         whisper,
         lambda _text: [[{"label": "joy", "score": 0.99}, {"label": "love", "score": 0.01}]],
         spellchecker=_KnownWords(),
@@ -122,7 +130,7 @@ def test_speech_smooths_a_text_model_extreme_using_input_quality(tmp_path):
     np.testing.assert_allclose(result.probs.sum(), 1.0)
 
 
-def test_speech_requires_lexically_plausible_transcript(tmp_path):
+def test_speech_requires_lexically_plausible_transcript(safe_tmp_path):
     rate = 16_000
     samples = np.full(rate * 2, 0.05, dtype=np.float32)
     whisper = _Whisper(
@@ -133,7 +141,7 @@ def test_speech_requires_lexically_plausible_transcript(tmp_path):
     )
 
     result = audio.run_speech_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         whisper,
         lambda _text: [{"label": "joy", "score": 1.0}],
         spellchecker=_KnownWords({"as"}),
@@ -145,10 +153,10 @@ def test_speech_requires_lexically_plausible_transcript(tmp_path):
     assert result.evidence["lexical_validity"] < 0.70
 
 
-def test_acoustic_abstains_on_silence(tmp_path):
+def test_acoustic_abstains_on_silence(safe_tmp_path):
     rate = 22_050
     result = audio.run_acoustic_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         audio_loader=_audio_loader(np.zeros(rate, dtype=np.float32), rate),
     )
 
@@ -157,7 +165,7 @@ def test_acoustic_abstains_on_silence(tmp_path):
     assert result.reason == "insufficient_active_audio"
 
 
-def test_acoustic_abstains_on_ambiguous_music_without_voice(tmp_path, monkeypatch):
+def test_acoustic_abstains_on_ambiguous_music_without_voice(safe_tmp_path, monkeypatch):
     rate = 22_050
     time = np.arange(rate * 2, dtype=np.float32) / rate
     samples = 0.12 * np.sin(2 * np.pi * 220 * time)
@@ -175,7 +183,7 @@ def test_acoustic_abstains_on_ambiguous_music_without_voice(tmp_path, monkeypatc
     monkeypatch.setattr(audio.librosa.feature, "spectral_flatness", lambda **_kwargs: np.array([[0.01]]))
 
     result = audio.run_acoustic_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         audio_loader=_audio_loader(samples, rate),
     )
 
@@ -184,7 +192,7 @@ def test_acoustic_abstains_on_ambiguous_music_without_voice(tmp_path, monkeypatc
     assert result.evidence["music_ambiguity"] >= 0.60
 
 
-def test_acoustic_voiced_result_is_bounded_not_an_extreme(tmp_path, monkeypatch):
+def test_acoustic_voiced_result_is_bounded_not_an_extreme(safe_tmp_path, monkeypatch):
     rate = 22_050
     time = np.arange(rate * 2, dtype=np.float32) / rate
     # Amplitude changes ensure a non-uniform but still very weak DSP cue.
@@ -200,7 +208,7 @@ def test_acoustic_voiced_result_is_bounded_not_an_extreme(tmp_path, monkeypatch)
     )
 
     result = audio.run_acoustic_pillar(
-        _wav_path(tmp_path),
+        _wav_path(safe_tmp_path),
         audio_loader=_audio_loader(samples, rate),
     )
 
